@@ -1,0 +1,17 @@
+const express = require('express');
+const router = express.Router();
+const { login, getMe, createUser, getAllUsers, updateUser } = require('../controllers/authController');
+const { protect } = require('../middleware/authMiddleware');
+const { authorize } = require('../middleware/rbacMiddleware');
+const { ROLES } = require('../constants/roles');
+
+router.post('/login', login);
+router.get('/me', protect, getMe);
+
+router.route('/users')
+  .get(protect, authorize(ROLES.ADMIN, ROLES.PRINCIPAL), getAllUsers)
+  .post(protect, authorize(ROLES.ADMIN), createUser);
+
+router.put('/users/:id', protect, authorize(ROLES.ADMIN), updateUser);
+
+module.exports = router;
