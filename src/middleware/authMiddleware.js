@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { ROLE_PERMISSIONS, ROLES } = require('../constants/roles');
 
 const protect = async (req, res, next) => {
   let token;
@@ -38,6 +39,52 @@ const protect = async (req, res, next) => {
   }
 };
 
+const authorize = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
+    if (!roles.includes(req.user.role) && req.user.role !== ROLES.ADMIN) {
+      return res.status(403).json({
+        success: false,
+        message: `Role ${req.user.role} is not authorized to access this resource`
+      });
+    }
+    next();
+  };
+};
+
+const requirePermission = (permission) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
+    if (req.user.role === ROLES.ADMIN) {
+      return next();
+    }
+
+    const userPerms = ROLE_PERMISSIONS[req.user.role] || [];
+    if (userPerms.includes(permission)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: `User lacks required permission: ${permission}`
+    });
+  };
+};
+
 module.exports = {
-  protect
+  protect,
+  authorize,
+  requirePermission
 };

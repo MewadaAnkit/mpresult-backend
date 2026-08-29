@@ -15,6 +15,21 @@ const ExaminationScheme = require('../models/ExaminationScheme');
 const Student = require('../models/Student');
 const StudentEnrollment = require('../models/StudentEnrollment');
 const Settings = require('../models/Settings');
+
+// ERP Models
+const AdmissionInquiry = require('../models/AdmissionInquiry');
+const Staff = require('../models/Staff');
+const TeacherAllocation = require('../models/TeacherAllocation');
+const Attendance = require('../models/Attendance');
+const Timetable = require('../models/Timetable');
+const Homework = require('../models/Homework');
+const FeeHead = require('../models/FeeHead');
+const FeeStructure = require('../models/FeeStructure');
+const StudentFeeLedger = require('../models/StudentFeeLedger');
+const FeePayment = require('../models/FeePayment');
+const Announcement = require('../models/Announcement');
+const Certificate = require('../models/Certificate');
+
 const { ROLES } = require('../constants/roles');
 const { CLASS_MODES, COMPONENT_TYPES, EXAMINATION_TYPES } = require('../constants/examinationTypes');
 
@@ -39,7 +54,19 @@ const seed = async () => {
       ExaminationScheme.deleteMany(),
       Student.deleteMany(),
       StudentEnrollment.deleteMany(),
-      Settings.deleteMany()
+      Settings.deleteMany(),
+      AdmissionInquiry.deleteMany(),
+      Staff.deleteMany(),
+      TeacherAllocation.deleteMany(),
+      Attendance.deleteMany(),
+      Timetable.deleteMany(),
+      Homework.deleteMany(),
+      FeeHead.deleteMany(),
+      FeeStructure.deleteMany(),
+      StudentFeeLedger.deleteMany(),
+      FeePayment.deleteMany(),
+      Announcement.deleteMany(),
+      Certificate.deleteMany()
     ]);
     console.log('Cleaned old MP database records.');
 
@@ -81,7 +108,25 @@ const seed = async () => {
       assignedClasses: ['9', '10']
     });
 
-    console.log('Created Users (Admin, Principal, Exam In-Charge, Teacher).');
+    const accountantUser = await User.create({
+      name: 'Rameshwar Patidar (Senior Accountant)',
+      email: 'accountant@mpschool.edu.in',
+      password: 'accountant123',
+      role: ROLES.ACCOUNTANT,
+      phone: '9826056789',
+      designation: 'Head Accountant & Fee Officer'
+    });
+
+    const parentUser = await User.create({
+      name: 'Suresh Kumar Sharma (Parent)',
+      email: 'parent@mpschool.edu.in',
+      password: 'parent123',
+      role: ROLES.PARENT,
+      phone: '9826112233',
+      designation: 'Guardian'
+    });
+
+    console.log('Created Users (Admin, Principal, Exam In-Charge, Teacher, Accountant, Parent).');
 
     // 3. Create Academic Sessions
     const currentSession = await AcademicSession.create({
@@ -506,7 +551,256 @@ const seed = async () => {
 
     console.log('Created Sample Students and Academic Enrollments.');
 
-    // 13. Create School Settings
+    // 13. Create School ERP Seed Data
+    // Fee Heads
+    const tuitionHead = await FeeHead.create({ name: 'Tuition Fee', code: 'TUTION', description: 'Academic tuition fee per term' });
+    const admissionHead = await FeeHead.create({ name: 'Admission & Registration Fee', code: 'ADM', description: 'One-time admission charge' });
+    const examFeeHead = await FeeHead.create({ name: 'Examination & Lab Fee', code: 'EXAM', description: 'Term assessment fee' });
+    const annualHead = await FeeHead.create({ name: 'Annual Development Fee', code: 'ANNUAL', description: 'Infrastructure & Library charge' });
+    const computerHead = await FeeHead.create({ name: 'Computer & Smart Class Fee', code: 'COMP', description: 'IT and smart board charges' });
+
+    // Fee Structure for Class 9
+    const feeStruct9 = await FeeStructure.create({
+      academicSession: '2025-26',
+      className: '9',
+      title: 'Class 9 Standard Fee Structure 2025-26',
+      installments: [
+        {
+          installmentName: 'Term 1 (April)',
+          dueDate: new Date('2025-04-15'),
+          items: [
+            { feeHead: tuitionHead._id, headName: 'Tuition Fee', amount: 6000 },
+            { feeHead: admissionHead._id, headName: 'Admission Fee', amount: 2000 },
+            { feeHead: annualHead._id, headName: 'Annual Development Fee', amount: 2500 }
+          ],
+          totalAmount: 10500
+        },
+        {
+          installmentName: 'Term 2 (August)',
+          dueDate: new Date('2025-08-15'),
+          items: [
+            { feeHead: tuitionHead._id, headName: 'Tuition Fee', amount: 6000 },
+            { feeHead: examFeeHead._id, headName: 'Examination Fee', amount: 1500 },
+            { feeHead: computerHead._id, headName: 'Computer Fee', amount: 1000 }
+          ],
+          totalAmount: 8500
+        },
+        {
+          installmentName: 'Term 3 (December)',
+          dueDate: new Date('2025-12-15'),
+          items: [
+            { feeHead: tuitionHead._id, headName: 'Tuition Fee', amount: 6000 },
+            { feeHead: examFeeHead._id, headName: 'Final Exam Fee', amount: 1000 }
+          ],
+          totalAmount: 7000
+        }
+      ],
+      annualTotal: 26000
+    });
+
+    // Student Fee Ledgers & Payments
+    await StudentFeeLedger.create({
+      student: student1._id,
+      admissionNo: student1.admissionNo,
+      studentName: student1.studentName,
+      academicSession: '2025-26',
+      className: '9',
+      sectionName: 'A',
+      totalFee: 26000,
+      discountAmount: 2000,
+      discountReason: 'Sibling concession (Merit 10%)',
+      netFee: 24000,
+      paidAmount: 10500,
+      balanceAmount: 13500,
+      status: 'PARTIAL',
+      lastPaymentDate: new Date('2025-04-10')
+    });
+
+    await FeePayment.create({
+      receiptNo: 'REC-2025-00001',
+      student: student1._id,
+      admissionNo: student1.admissionNo,
+      studentName: student1.studentName,
+      academicSession: '2025-26',
+      className: '9',
+      sectionName: 'A',
+      amountPaid: 10500,
+      paymentMode: 'UPI',
+      transactionRef: 'UPI-AXIS-982348123',
+      items: [
+        { headName: 'Tuition Fee', amount: 6000 },
+        { headName: 'Admission Fee', amount: 2000 },
+        { headName: 'Annual Development', amount: 2500 }
+      ],
+      remarks: 'Paid via GPay at counter',
+      collectedByName: 'Rameshwar Patidar (Senior Accountant)',
+      paymentDate: new Date('2025-04-10')
+    });
+
+    // Staff Records
+    const staff1 = await Staff.create({
+      employeeId: 'EMP-0001',
+      fullName: 'Pooja Verma',
+      email: 'pooja.verma@mpschool.edu.in',
+      phone: '9826045678',
+      gender: 'FEMALE',
+      designation: 'TGT Mathematics',
+      department: 'ACADEMIC',
+      qualification: 'M.Sc (Mathematics), B.Ed',
+      experienceYears: 7,
+      joiningDate: new Date('2019-07-01'),
+      salary: 42000,
+      address: 'Arera Colony, Bhopal, MP'
+    });
+
+    const staff2 = await Staff.create({
+      employeeId: 'EMP-0002',
+      fullName: 'Dr. Suresh Chandra Malviya',
+      email: 'suresh.malviya@mpschool.edu.in',
+      phone: '9826055566',
+      gender: 'MALE',
+      designation: 'PGT Science & Chemistry',
+      department: 'ACADEMIC',
+      qualification: 'Ph.D, M.Sc (Chemistry), B.Ed',
+      experienceYears: 12,
+      joiningDate: new Date('2015-06-15'),
+      salary: 58000,
+      address: 'Shahpura, Bhopal, MP'
+    });
+
+    // Teacher Allocations
+    await TeacherAllocation.create({
+      academicSession: '2025-26',
+      teacher: staff1._id,
+      teacherName: 'Pooja Verma',
+      className: '9',
+      sectionName: 'A',
+      subjectCode: 'MATH_09',
+      subjectName: 'Mathematics (गणित)',
+      isClassTeacher: true
+    });
+
+    // Admission Inquiries
+    await AdmissionInquiry.create({
+      inquiryNo: 'INQ-2025-0001',
+      academicSession: '2025-26',
+      studentName: 'Harshit Saxena',
+      gender: 'MALE',
+      dob: new Date('2010-08-14'),
+      appliedClass: '9',
+      previousSchool: 'St. Joseph Convent, Bhopal',
+      fatherName: 'Deepak Saxena',
+      motherName: 'Sunita Saxena',
+      guardianPhone: '9826778899',
+      guardianEmail: 'deepak.saxena@gmail.com',
+      address: 'Kolar Road, Bhopal',
+      status: 'UNDER_REVIEW',
+      notes: [{ text: 'Entrance test cleared with 84%. Document verification pending.', addedBy: 'Admin Office' }]
+    });
+
+    await AdmissionInquiry.create({
+      inquiryNo: 'INQ-2025-0002',
+      academicSession: '2025-26',
+      studentName: 'Ananya Chouhan',
+      gender: 'FEMALE',
+      dob: new Date('2011-02-20'),
+      appliedClass: '8',
+      previousSchool: 'Kendriya Vidyalaya No. 1, Bhopal',
+      fatherName: 'Rajendra Chouhan',
+      guardianPhone: '9826114477',
+      address: 'MP Nagar Zone II, Bhopal',
+      status: 'APPROVED',
+      notes: [{ text: 'Admission approved by Principal. Fee deposit awaited.', addedBy: 'Principal Office' }]
+    });
+
+    // Daily Attendance
+    await Attendance.create({
+      academicSession: '2025-26',
+      className: '9',
+      sectionName: 'A',
+      date: new Date(),
+      totalStudents: 1,
+      presentCount: 1,
+      absentCount: 0,
+      lateCount: 0,
+      records: [
+        {
+          student: student1._id,
+          admissionNo: student1.admissionNo,
+          rollNo: student1.currentRollNo,
+          studentName: student1.studentName,
+          status: 'PRESENT',
+          remarks: 'On time'
+        }
+      ],
+      takenByName: 'Pooja Verma (Class Teacher)'
+    });
+
+    // Timetable
+    await Timetable.create({
+      academicSession: '2025-26',
+      className: '9',
+      sectionName: 'A',
+      dayOfWeek: 'MONDAY',
+      periods: [
+        { periodNumber: 1, startTime: '08:30', endTime: '09:15', subjectCode: 'HIN_09', subjectName: 'Hindi (हिंदी)', teacherName: 'Smt. Kavita Sharma', roomNo: 'Room 101' },
+        { periodNumber: 2, startTime: '09:15', endTime: '10:00', subjectCode: 'MATH_09', subjectName: 'Mathematics (गणित)', teacherName: 'Pooja Verma', roomNo: 'Room 101' },
+        { periodNumber: 3, startTime: '10:00', endTime: '10:45', subjectCode: 'SCI_09', subjectName: 'Science (विज्ञान)', teacherName: 'Dr. Suresh Malviya', roomNo: 'Lab 2' },
+        { periodNumber: 4, startTime: '10:45', endTime: '11:15', isBreak: true, startTime: '10:45', endTime: '11:15', subjectName: 'Recess / Lunch Break' },
+        { periodNumber: 5, startTime: '11:15', endTime: '12:00', subjectCode: 'ENG_09', subjectName: 'English (अंग्रेजी)', teacherName: 'Anil Chouhan', roomNo: 'Room 101' }
+      ]
+    });
+
+    // Homework
+    await Homework.create({
+      academicSession: '2025-26',
+      className: '9',
+      sectionName: 'A',
+      subjectName: 'Mathematics',
+      title: 'Polynomials & Algebraic Identities Exercise 2.4',
+      description: 'Complete questions 1 to 12 from NCERT Textbook Chapter 2 in homework notebook.',
+      assignedDate: new Date(),
+      dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      assignedByName: 'Pooja Verma'
+    });
+
+    // Announcements
+    await Announcement.create({
+      title: 'Important: Half-Yearly Examination Schedule 2025-26 Published',
+      content: 'All students and parents are notified that the MP Board pattern Half-Yearly examinations will commence from September 15th. Admit cards and date sheets have been published in the examination portal.',
+      audience: 'ALL',
+      priority: 'HIGH',
+      academicSession: '2025-26',
+      authorName: 'Principal Office'
+    });
+
+    await Announcement.create({
+      title: 'Fee Installment 2 (Term 2) Due Date Notice',
+      content: 'Dear Parents, please deposit Term 2 fees on or before August 15th to avoid late fee penalties. UPI, Netbanking and Cash counters are open from 9:00 AM to 2:00 PM.',
+      audience: 'PARENTS',
+      priority: 'NORMAL',
+      academicSession: '2025-26',
+      authorName: 'Accounts Department'
+    });
+
+    // Certificates
+    await Certificate.create({
+      certificateNo: 'BON-2025-0001',
+      certificateType: 'BONAFIDE',
+      student: student1._id,
+      studentName: student1.studentName,
+      admissionNo: student1.admissionNo,
+      academicSession: '2025-26',
+      className: '9',
+      sectionName: 'A',
+      conduct: 'Exemplary',
+      feeClearedTill: 'March 2026',
+      issuedByName: 'Smt. Vandana Mishra (Principal)'
+    });
+
+    console.log('Created Complete School ERP Seed Dataset (Fees, Staff, Inquiries, Timetable, Homework, Notices, Certificates).');
+
+    // 14. Create School Settings
     await Settings.create({
       schoolName: 'GOVERNMENT MODEL HIGHER SECONDARY SCHOOL OF EXCELLENCE',
       schoolHindiName: 'शासकीय उत्कृष्ट उच्चतर माध्यमिक विद्यालय, भोपाल',
@@ -524,11 +818,12 @@ const seed = async () => {
 
     console.log('Created Official MP School Settings.');
     console.log('=======================================================');
-    console.log('  MP RESULT MANAGEMENT SYSTEM SEEDING COMPLETED!');
+    console.log('  MP SCHOOL ERP & RMS SEEDING COMPLETED!');
     console.log('  Admin Login: admin@mpschool.edu.in / admin123');
     console.log('  Principal Login: principal@mpschool.edu.in / principal123');
-    console.log('  Exam In-Charge: exam@mpschool.edu.in / exam123');
+    console.log('  Accountant Login: accountant@mpschool.edu.in / accountant123');
     console.log('  Teacher Login: teacher@mpschool.edu.in / teacher123');
+    console.log('  Parent Login: parent@mpschool.edu.in / parent123');
     console.log('=======================================================');
 
     process.exit(0);

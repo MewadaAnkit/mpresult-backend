@@ -4,7 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const errorHandler = require('./middleware/errorHandler');
 
-// Route Imports
+// Core & Existing Route Imports
 const authRoutes = require('./routes/authRoutes');
 const academicRoutes = require('./routes/academicRoutes');
 const subjectRoutes = require('./routes/subjectRoutes');
@@ -19,14 +19,26 @@ const analyticsRoutes = require('./routes/analyticsRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 
+// New School Management System (ERP) Route Imports
+const admissionRoutes = require('./routes/admissionRoutes');
+const staffRoutes = require('./routes/staffRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
+const timetableRoutes = require('./routes/timetableRoutes');
+const homeworkRoutes = require('./routes/homeworkRoutes');
+const feeRoutes = require('./routes/feeRoutes');
+const communicationRoutes = require('./routes/communicationRoutes');
+const certificateRoutes = require('./routes/certificateRoutes');
+
 const app = express();
 
 // Security Middlewares
 app.use(helmet());
-app.use(cors({
-  origin: [process.env.CLIENT_URL || 'http://localhost:5174', 'http://localhost:5173'],
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: [process.env.CLIENT_URL || 'http://localhost:5174', 'http://localhost:5173'],
+    credentials: true
+  })
+);
 
 // Logging
 if (process.env.NODE_ENV === 'development') {
@@ -41,8 +53,8 @@ app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'online',
-    system: 'Madhya Pradesh School & MP Board Result Management System',
-    version: '1.0.0',
+    system: 'MP School ERP & Result Management System',
+    version: '2.0.0',
     timestamp: new Date()
   });
 });
@@ -52,6 +64,16 @@ app.use('/api/auth', authRoutes);
 app.use('/api/academic', academicRoutes);
 app.use('/api/subjects', subjectRoutes);
 app.use('/api/students', studentRoutes);
+app.use('/api/admissions', admissionRoutes);
+app.use('/api/staff', staffRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/timetable', timetableRoutes);
+app.use('/api/homework', homeworkRoutes);
+app.use('/api/fees', feeRoutes);
+app.use('/api/communication', communicationRoutes);
+app.use('/api/certificates', certificateRoutes);
+
+// Examination & Results (Existing preserved engine)
 app.use('/api/schemes', schemeRoutes);
 app.use('/api/examinations', examRoutes);
 app.use('/api/marks', marksRoutes);

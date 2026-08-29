@@ -1,5 +1,10 @@
 const Student = require('../models/Student');
 const StudentEnrollment = require('../models/StudentEnrollment');
+const StudentFeeLedger = require('../models/StudentFeeLedger');
+const FeePayment = require('../models/FeePayment');
+const Attendance = require('../models/Attendance');
+const Result = require('../models/Result');
+const Certificate = require('../models/Certificate');
 const { parseBufferToRows, processStudentBulkImport } = require('../services/bulkImportService');
 const { promoteStudents } = require('../services/promotionService');
 const { logAction } = require('../services/auditService');
@@ -27,7 +32,9 @@ exports.getStudents = async (req, res, next) => {
 
     const students = await Student.find(query).sort({ currentClass: 1, currentSection: 1, currentRollNo: 1 });
     res.status(200).json({ success: true, count: students.length, data: students });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 exports.getStudentById = async (req, res, next) => {
@@ -41,12 +48,80 @@ exports.getStudentById = async (req, res, next) => {
       .sort({ sessionName: -1 });
 
     res.status(200).json({ success: true, data: { student, history } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Get Student 360 Comprehensive Profile
+// @route   GET /api/students/:id/360
+exports.getStudent360 = async (req, res, next) => {
+  try {
+    const student = await Student.findById(req.params.id);
+    if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
+
+    // Academic Enrollments
+    const enrollments = await StudentEnrollment.find({ studentId: student._id }).sort({ sessionName: -1 });
+
+    // Fee Ledger & Payments
+    const feeLedger = await StudentFeeLedger.findOne({
+      student: student._id,
+      academicSession: student.currentSession
+    });
+    const feePayments = await FeePayment.find({ student: student._id }).sort({ paymentDate: -1 });
+
+    // Attendance Summary
+    const attendances = await Attendance.find({ 'records.student': student._id }).sort({ date: -1 });
+    let presentCount = 0;
+    let totalDays = 0;
+    const attendanceRecords = [];
+    attendances.forEach((att) => {
+      const rec = att.records.find((r) => String(r.student) === String(student._id));
+      if (rec) {
+        totalDays++;
+        if (rec.status === 'PRESENT') presentCount++;
+        attendanceRecords.push({
+          date: att.date,
+          status: rec.status,
+          remarks: rec.remarks
+        });
+      }
+    });
+    const attendanceRate = totalDays > 0 ? ((presentCount / totalDays) * 100).toFixed(1) : '100.0';
+
+    // Exam Results
+    const results = await Result.find({ studentAdmissionNo: student.admissionNo }).sort({ createdAt: -1 });
+
+    // Certificates
+    const certificates = await Certificate.find({ student: student._id }).sort({ issueDate: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        student,
+        enrollments,
+        fee: {
+          ledger: feeLedger,
+          payments: feePayments
+        },
+        attendance: {
+          totalDays,
+          presentCount,
+          attendanceRate,
+          recentRecords: attendanceRecords.slice(0, 20)
+        },
+        results,
+        certificates
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 exports.createStudent = async (req, res, next) => {
   try {
-    const studentData = { ...req.body, createdBy: req.user._id };
+    const studentData = { ...req.body, createdBy: req.user ? req.user._id : null };
     const student = await Student.create(studentData);
 
     // Create initial enrollment
@@ -71,7 +146,9 @@ exports.createStudent = async (req, res, next) => {
     });
 
     res.status(201).json({ success: true, data: student });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 exports.updateStudent = async (req, res, next) => {
@@ -106,7 +183,9 @@ exports.updateStudent = async (req, res, next) => {
     });
 
     res.status(200).json({ success: true, data: student });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 exports.bulkImport = async (req, res, next) => {
@@ -135,7 +214,9 @@ exports.bulkImport = async (req, res, next) => {
     });
 
     res.status(200).json({ success: true, data: result });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 exports.promote = async (req, res, next) => {
@@ -164,5 +245,7 @@ exports.promote = async (req, res, next) => {
     });
 
     res.status(200).json({ success: true, data: result });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
