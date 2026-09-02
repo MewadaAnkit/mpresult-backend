@@ -15,6 +15,15 @@ exports.getSessions = async (req, res, next) => {
 exports.createSession = async (req, res, next) => {
   try {
     const { sessionName, startDate, endDate, isCurrent, description } = req.body;
+
+    // BUG-025 FIX: Validate that endDate is after startDate
+    if (startDate && endDate && new Date(endDate) <= new Date(startDate)) {
+      return res.status(400).json({
+        success: false,
+        message: 'End date must be after start date'
+      });
+    }
+
     const session = await AcademicSession.create({
       sessionName,
       startDate,

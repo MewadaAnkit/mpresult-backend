@@ -8,6 +8,7 @@ const { RESULT_STATUSES } = require('../constants/resultStatuses');
 
 /**
  * Determine grade and remark based on percentage and GradeRule
+ * BUG-026 FIX: Handles gaps in grade boundaries by finding the nearest lower boundary
  */
 const determineGrade = (percentage, gradeRule) => {
   if (!gradeRule || !gradeRule.boundaries || gradeRule.boundaries.length === 0) {
@@ -22,7 +23,11 @@ const determineGrade = (percentage, gradeRule) => {
     return { grade: 'E', gradePoint: 0, remark: 'Needs Improvement / Fail' };
   }
 
-  const boundary = gradeRule.boundaries.find(
+  // Sort boundaries high-to-low for fallback resolution
+  const sorted = [...gradeRule.boundaries].sort((a, b) => b.minPercentage - a.minPercentage);
+
+  // Direct match
+  const boundary = sorted.find(
     b => percentage >= b.minPercentage && percentage <= b.maxPercentage
   );
 
@@ -34,17 +39,27 @@ const determineGrade = (percentage, gradeRule) => {
     };
   }
 
-  // If higher than max or lower than min boundary
-  const sorted = [...gradeRule.boundaries].sort((a, b) => b.minPercentage - a.minPercentage);
-  if (percentage >= sorted[0].maxPercentage) {
+  // BUG-026 FIX: Handle gaps — find nearest lower boundary
+  // (e.g. if boundaries are 0-32 and 33-100 with nothing at 32.5)
+  if (percentage > sorted[0].maxPercentage) {
+    // Above all ranges — use highest grade
     return { grade: sorted[0].grade, gradePoint: sorted[0].gradePoint || 10, remark: sorted[0].description || '' };
   }
+
+  // Find the highest boundary whose maxPercentage is still <= percentage
+  const lowerBoundary = sorted.find(b => b.maxPercentage <= percentage);
+  if (lowerBoundary) {
+    return { grade: lowerBoundary.grade, gradePoint: lowerBoundary.gradePoint || 0, remark: lowerBoundary.description || '' };
+  }
+
+  // Below all ranges — use lowest grade
   const lowest = sorted[sorted.length - 1];
   return { grade: lowest.grade, gradePoint: lowest.gradePoint || 0, remark: lowest.description || '' };
 };
 
 /**
  * Determine division based on overall percentage
+ * BUG-028: MP Board standard thresholds: 33%=III, 45%=II, 60%=I, 75%=Distinction
  */
 const determineDivision = (percentage, resultStatus) => {
   if (resultStatus !== RESULT_STATUSES.PASS && resultStatus !== RESULT_STATUSES.PROMOTED) {
@@ -88,16 +103,21 @@ const calculateStudentResult = async (studentId, examinationId) => {
   const subjectResults = [];
 
   for (const markDoc of marksList) {
-    const totalMax = markDoc.totalMaxMarks || 100;
-    const totalObtained = markDoc.totalObtainedMarks || 0;
-    const percentage = totalMax > 0 ? Number(((totalObtained / totalMax) * 100).toFixed(2)) : 0;
-    const { grade, gradePoint } = determineGrade(percentage, gradeRule);
+    // BUG-020 FIX: Detect ABS/EXP status per subject
+    const markStatus = markDoc.status || 'PRESENT';
+    const isAbsent = markStatus === 'ABS';
+    const isExpelled = markStatus === 'EXP';
 
-    // Check subject pass criteria
-    let isPassed = true;
+    const totalMax = markDoc.totalMaxMarks || 100;
+    const totalObtained = isAbsent || isExpelled ? 0 : (markDoc.totalObtainedMarks || 0);
+    const percentage = totalMax > 0 ? Number(((totalObtained / totalMax) * 100).toFixed(2)) : 0;
+    const { grade, gradePoint } = determineGrade(isAbsent || isExpelled ? 0 : percentage, gradeRule);
+
+    // ABS/EXP subjects are counted as fails for result purposes
+    let isPassed = !isAbsent && !isExpelled;
     const subjectMinPercentage = passingRule?.subjectMinPercentage || 33;
 
-    if (percentage < subjectMinPercentage) {
+    if (isPassed && percentage < subjectMinPercentage) {
       isPassed = false;
     }
 
@@ -132,7 +152,8 @@ const calculateStudentResult = async (studentId, examinationId) => {
       grade,
       gradePoint,
       isPassed,
-      status: isPassed ? 'PASS' : 'FAIL'
+      // BUG-020 FIX: Show ABS/EXP on marksheet instead of 0/FAIL
+      status: isAbsent ? 'ABS' : isExpelled ? 'EXP' : (isPassed ? 'PASS' : 'FAIL')
     });
   }
 
@@ -140,16 +161,20 @@ const calculateStudentResult = async (studentId, examinationId) => {
   const { grade: overallGrade } = determineGrade(overallPercentage, gradeRule);
 
   // 4. Determine overall result status
-  const overallMinPct = passingRule?.overallMinPercentage || 33;
+  // If no passing rule configured, use 33% as default minimum (standard MP Board)
+  const overallMinPct = passingRule?.overallMinPercentage ?? 33;
   let resultStatus = RESULT_STATUSES.PASS;
 
   if (overallPercentage < overallMinPct) {
     resultStatus = RESULT_STATUSES.FAIL;
   } else if (failedSubjects.length > 0) {
-    const maxFailedAllowed = passingRule?.supplementaryRules?.maxFailedSubjects || 2;
-    if (failedSubjects.length <= maxFailedAllowed && passingRule?.supplementaryRules?.allowSupplementary) {
+    // If passing rule exists and allows supplementary for limited failed subjects
+    const allowSupplementary = passingRule?.supplementaryRules?.allowSupplementary ?? false;
+    const maxFailedAllowed = passingRule?.supplementaryRules?.maxFailedSubjects ?? 1;
+    if (allowSupplementary && failedSubjects.length <= maxFailedAllowed) {
       resultStatus = RESULT_STATUSES.SUPPLEMENTARY;
     } else {
+      // No passing rule configured OR too many failed subjects → FAIL
       resultStatus = RESULT_STATUSES.FAIL;
     }
   } else {
@@ -169,7 +194,7 @@ const calculateStudentResult = async (studentId, examinationId) => {
   // 6. Update or Create Result document
   const resultData = {
     studentId,
-    admissionNo: student ? student.admissionNo : markDoc.admissionNo,
+    admissionNo: student ? student.admissionNo : (marksList[0]?.admissionNo || ''),
     rollNo: enrollment ? enrollment.rollNo : student?.currentRollNo || '1',
     examinationId,
     sessionName: exam.sessionName,

@@ -36,15 +36,53 @@ exports.getInquiries = async (req, res, next) => {
 // @route   POST /api/admissions/inquiries
 exports.createInquiry = async (req, res, next) => {
   try {
-    const { academicSession, appliedClass } = req.body;
+    const { academicSession, appliedClass, studentName, guardianPhone, fatherName, motherName, previousSchool, address, dob, gender } = req.body;
     
+    // Server-side validation
+    if (!studentName || !studentName.trim()) {
+      return res.status(400).json({ success: false, message: 'Student Full Name is required' });
+    }
+    const cleanStudentName = studentName.replace(/<[^>]*>?/gm, '').trim();
+    if (cleanStudentName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Student name must be at least 2 characters' });
+    }
+    if (!/^[a-zA-Z\u0900-\u097F\s.'-]+$/.test(cleanStudentName)) {
+      return res.status(400).json({ success: false, message: 'Student name contains invalid characters. Only letters, spaces, and dots are allowed.' });
+    }
+
+    if (!guardianPhone || !guardianPhone.trim()) {
+      return res.status(400).json({ success: false, message: 'Guardian contact phone number is required' });
+    }
+    const cleanPhone = guardianPhone.trim().replace(/[\s-+]/g, '');
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid 10-digit mobile number starting with 6, 7, 8, or 9' });
+    }
+
+    if (!appliedClass) {
+      return res.status(400).json({ success: false, message: 'Applied class is required' });
+    }
+
+    const cleanFatherName = fatherName ? fatherName.replace(/<[^>]*>?/gm, '').trim() : '';
+    if (cleanFatherName && !/^[a-zA-Z\u0900-\u097F\s.'-]+$/.test(cleanFatherName)) {
+      return res.status(400).json({ success: false, message: "Father's name contains invalid characters." });
+    }
+
     // Generate inquiry number: INQ-2025-001
-    const count = await AdmissionInquiry.countDocuments({ academicSession });
-    const sessionYear = academicSession.split('-')[0] || '2026';
+    const targetSession = academicSession || '2025-26';
+    const count = await AdmissionInquiry.countDocuments({ academicSession: targetSession });
+    const sessionYear = targetSession.split('-')[0] || '2026';
     const inquiryNo = `INQ-${sessionYear}-${String(count + 1).padStart(4, '0')}`;
 
     const inquiry = await AdmissionInquiry.create({
       ...req.body,
+      studentName: cleanStudentName,
+      fatherName: cleanFatherName,
+      motherName: motherName ? motherName.replace(/<[^>]*>?/gm, '').trim() : '',
+      previousSchool: previousSchool ? previousSchool.replace(/<[^>]*>?/gm, '').trim() : '',
+      address: address ? address.replace(/<[^>]*>?/gm, '').trim() : '',
+      guardianPhone: cleanPhone,
+      academicSession: targetSession,
+      appliedClass: String(appliedClass).toUpperCase(),
       inquiryNo,
       createdBy: req.user ? req.user._id : null
     });

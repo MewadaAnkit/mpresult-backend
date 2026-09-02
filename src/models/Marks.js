@@ -113,7 +113,14 @@ const marksSchema = new mongoose.Schema(
     },
     isPassed: {
       type: Boolean,
-      default: true
+      default: false // BUG-020 FIX: Default false — only true when marks are explicitly entered and validated
+    },
+    // BUG-020 FIX: Track absent/expelled students
+    status: {
+      type: String,
+      enum: ['PRESENT', 'ABS', 'EXP'],
+      default: 'PRESENT',
+      uppercase: true
     },
     isLocked: {
       type: Boolean,

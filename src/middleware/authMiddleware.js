@@ -2,6 +2,14 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { ROLE_PERMISSIONS, ROLES } = require('../constants/roles');
 
+// Import token blacklist from authController
+// Using lazy require to avoid circular dependency
+const getBlacklist = () => {
+  try {
+    return require('../controllers/authController').tokenBlacklist;
+  } catch { return new Map(); }
+};
+
 const protect = async (req, res, next) => {
   let token;
 
@@ -15,6 +23,15 @@ const protect = async (req, res, next) => {
     return res.status(401).json({
       success: false,
       message: 'Not authorized to access this route. No token provided.'
+    });
+  }
+
+  // BUG-007 FIX: Check if token has been blacklisted (logged out)
+  const blacklist = getBlacklist();
+  if (blacklist.has(token)) {
+    return res.status(401).json({
+      success: false,
+      message: 'Session expired. Please log in again.'
     });
   }
 

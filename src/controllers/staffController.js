@@ -28,12 +28,41 @@ exports.getStaffList = async (req, res, next) => {
 // @route   POST /api/staff
 exports.createStaff = async (req, res, next) => {
   try {
-    const { fullName, phone, designation, department, email } = req.body;
+    const { fullName, phone, designation, department, email, qualification, experienceYears } = req.body;
+
+    // Server-side validation
+    if (!fullName || !fullName.trim()) {
+      return res.status(400).json({ success: false, message: 'Full Name is required' });
+    }
+    const cleanFullName = fullName.replace(/<[^>]*>?/gm, '').trim();
+    if (cleanFullName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Full Name must be at least 2 characters' });
+    }
+    if (!/^[a-zA-Z\u0900-\u097F\s.'-]+$/.test(cleanFullName)) {
+      return res.status(400).json({ success: false, message: 'Full Name contains invalid characters. Only letters, spaces, and dots are allowed.' });
+    }
+
+    if (!phone || !phone.trim()) {
+      return res.status(400).json({ success: false, message: 'Phone Number is required' });
+    }
+    const cleanPhone = phone.trim().replace(/[\s-+]/g, '');
+    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid 10-digit mobile number starting with 6, 7, 8, or 9' });
+    }
+
+    if (!designation || !designation.trim()) {
+      return res.status(400).json({ success: false, message: 'Designation is required' });
+    }
+
     const count = await Staff.countDocuments();
     const employeeId = `EMP-${String(count + 1).padStart(4, '0')}`;
 
     const staff = await Staff.create({
       ...req.body,
+      fullName: cleanFullName,
+      phone: cleanPhone,
+      designation: designation.replace(/<[^>]*>?/gm, '').trim(),
+      qualification: qualification ? qualification.replace(/<[^>]*>?/gm, '').trim() : '',
       employeeId
     });
 

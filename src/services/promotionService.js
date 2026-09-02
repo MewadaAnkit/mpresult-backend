@@ -1,5 +1,6 @@
 const Student = require('../models/Student');
 const StudentEnrollment = require('../models/StudentEnrollment');
+const AcademicSession = require('../models/AcademicSession');
 
 /**
  * Promote students from one class/session to the next session
@@ -15,6 +16,12 @@ const promoteStudents = async ({
   status = 'PROMOTED',
   user
 }) => {
+  // BUG-008 FIX: Validate that target session exists before proceeding
+  const sessionExists = await AcademicSession.findOne({ sessionName: toSession });
+  if (!sessionExists) {
+    throw new Error(`Target academic session '${toSession}' does not exist. Please create it first in Academic Sessions.`);
+  }
+
   const successful = [];
   const errors = [];
 
@@ -38,6 +45,7 @@ const promoteStudents = async ({
       const nextStream = toStream || student.currentStream;
 
       // 3. Create new session enrollment record
+      // BUG-019 FIX: Reset rollNo to null — roll numbers must be re-assigned in new class
       const newEnrollment = await StudentEnrollment.findOneAndUpdate(
         { studentId, sessionName: toSession },
         {
@@ -46,7 +54,7 @@ const promoteStudents = async ({
           sessionName: toSession,
           className: nextClass,
           sectionName: nextSection,
-          rollNo: student.currentRollNo,
+          rollNo: '', // Reset roll number — to be assigned fresh in new class
           streamName: nextStream,
           status: 'ACTIVE',
           remarks: `Promoted from ${student.currentClass} (${fromSession}) to ${nextClass} (${toSession})`
@@ -58,6 +66,7 @@ const promoteStudents = async ({
       student.currentSession = toSession;
       student.currentClass = nextClass;
       student.currentSection = nextSection;
+      student.currentRollNo = ''; // BUG-019 FIX: Reset roll number on promotion
       if (nextStream) student.currentStream = nextStream;
       await student.save();
 

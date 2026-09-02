@@ -139,7 +139,7 @@ exports.getAttendanceAnalytics = async (req, res, next) => {
     });
 
     const averagePercentage =
-      totalStudentsTracked > 0 ? ((totalPresent / totalStudentsTracked) * 100).toFixed(1) : '100.0';
+      totalStudentsTracked > 0 ? ((totalPresent / totalStudentsTracked) * 100).toFixed(1) : null;
 
     res.status(200).json({
       success: true,
@@ -186,7 +186,7 @@ exports.getStudentAttendance = async (req, res, next) => {
     });
 
     const totalDays = studentRecords.length;
-    const attendancePercentage = totalDays > 0 ? ((presentCount / totalDays) * 100).toFixed(1) : '100.0';
+    const attendancePercentage = totalDays > 0 ? ((presentCount / totalDays) * 100).toFixed(1) : null;
 
     res.status(200).json({
       success: true,

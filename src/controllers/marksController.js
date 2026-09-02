@@ -35,7 +35,7 @@ exports.getMarks = async (req, res, next) => {
  */
 exports.saveStudentSubjectMarks = async (req, res, next) => {
   try {
-    const { studentId, examinationId, subjectId, components } = req.body;
+    const { studentId, examinationId, subjectId, components, status } = req.body;
 
     const exam = await Examination.findById(examinationId).populate('schemeId');
     if (!exam) return res.status(404).json({ success: false, message: 'Examination not found' });
@@ -49,16 +49,31 @@ exports.saveStudentSubjectMarks = async (req, res, next) => {
     const subject = await Subject.findById(subjectId);
     if (!subject) return res.status(404).json({ success: false, message: 'Subject not found' });
 
-    // Validate component marks against resolved components
-    const resolvedComponents = resolveSubjectComponents(exam.schemeId, subject);
-    const validation = validateComponentMarks(components, resolvedComponents);
+    // BUG-020 FIX: Support ABS (Absent) and EXP (Expelled) status
+    const specialStatus = ['ABS', 'EXP'].includes(String(status).toUpperCase()) ? status.toUpperCase() : null;
 
-    if (!validation.isValid) {
-      return res.status(400).json({ success: false, message: 'Validation failed', errors: validation.errors });
+    let percentage = 0;
+    let isPassed = false;
+    let validatedComponents = components;
+
+    if (!specialStatus) {
+      // Normal marks entry path
+      const resolvedComponents = resolveSubjectComponents(exam.schemeId, subject);
+      const validation = validateComponentMarks(components, resolvedComponents);
+
+      if (!validation.isValid) {
+        return res.status(400).json({ success: false, message: 'Validation failed', errors: validation.errors });
+      }
+
+      percentage = validation.totalMax > 0 ? Number(((validation.totalObtained / validation.totalMax) * 100).toFixed(2)) : 0;
+      isPassed = percentage >= (subject.totalPassingMarks || 33);
+    } else {
+      // ABS/EXP: zero marks, not passed
+      validatedComponents = (components || []).map(c => ({ ...c, obtained: 0 }));
     }
 
-    const percentage = validation.totalMax > 0 ? Number(((validation.totalObtained / validation.totalMax) * 100).toFixed(2)) : 0;
-    const isPassed = percentage >= (subject.totalPassingMarks || 33);
+    const resolvedComponents2 = resolveSubjectComponents(exam.schemeId, subject);
+    const validation2 = validateComponentMarks(validatedComponents || [], resolvedComponents2);
 
     const oldMarkDoc = await Marks.findOne({ studentId, examinationId, subjectId });
 
@@ -74,11 +89,12 @@ exports.saveStudentSubjectMarks = async (req, res, next) => {
         subjectId,
         subjectName: subject.subjectName,
         subjectCode: subject.subjectCode,
-        components,
-        totalMaxMarks: validation.totalMax,
-        totalObtainedMarks: validation.totalObtained,
-        percentage,
-        isPassed,
+        components: validatedComponents || [],
+        totalMaxMarks: validation2.totalMax,
+        totalObtainedMarks: specialStatus ? 0 : validation2.totalObtained,
+        percentage: specialStatus ? 0 : percentage,
+        isPassed: specialStatus ? false : isPassed,
+        status: specialStatus || 'PRESENT', // BUG-020: track ABS/EXP
         enteredBy: req.user._id
       },
       { upsert: true, new: true }
@@ -90,9 +106,11 @@ exports.saveStudentSubjectMarks = async (req, res, next) => {
       module: 'MARKS',
       studentAdmissionNo: student.admissionNo,
       studentName: student.studentName,
-      description: `Saved marks for ${student.studentName} in ${subject.subjectName}: ${validation.totalObtained}/${validation.totalMax}`,
+      description: specialStatus
+        ? `Marked ${student.studentName} as ${specialStatus} in ${subject.subjectName}`
+        : `Saved marks for ${student.studentName} in ${subject.subjectName}: ${validation2.totalObtained}/${validation2.totalMax}`,
       oldValues: oldMarkDoc ? { totalObtained: oldMarkDoc.totalObtainedMarks } : null,
-      newValues: { totalObtained: validation.totalObtained }
+      newValues: { totalObtained: specialStatus ? 0 : validation2.totalObtained, status: specialStatus || 'PRESENT' }
     });
 
     res.status(200).json({ success: true, message: 'Marks saved successfully', data: markDoc });
@@ -118,21 +136,34 @@ exports.saveGridMarks = async (req, res, next) => {
     const errors = [];
 
     for (const entry of entries) {
-      const { studentId, components } = entry;
+      const { studentId, components, status: entryStatus } = entry;
       const student = await Student.findById(studentId);
       if (!student) {
         errors.push({ studentId, error: 'Student not found' });
         continue;
       }
 
-      const validation = validateComponentMarks(components, resolvedComponents);
-      if (!validation.isValid) {
-        errors.push({ studentId, admissionNo: student.admissionNo, errors: validation.errors });
-        continue;
+      // BUG-020 FIX: Handle ABS/EXP in grid marks
+      const specialStatus = ['ABS', 'EXP'].includes(String(entryStatus || '').toUpperCase())
+        ? entryStatus.toUpperCase() : null;
+
+      let percentage = 0;
+      let isPassed = false;
+      let finalComponents = components;
+
+      if (!specialStatus) {
+        const validation = validateComponentMarks(components, resolvedComponents);
+        if (!validation.isValid) {
+          errors.push({ studentId, admissionNo: student.admissionNo, errors: validation.errors });
+          continue;
+        }
+        percentage = validation.totalMax > 0 ? Number(((validation.totalObtained / validation.totalMax) * 100).toFixed(2)) : 0;
+        isPassed = percentage >= (subject.totalPassingMarks || 33);
+      } else {
+        finalComponents = (components || []).map(c => ({ ...c, obtainedMarks: 0 }));
       }
 
-      const percentage = validation.totalMax > 0 ? Number(((validation.totalObtained / validation.totalMax) * 100).toFixed(2)) : 0;
-      const isPassed = percentage >= (subject.totalPassingMarks || 33);
+      const totalValidation = validateComponentMarks(finalComponents || [], resolvedComponents);
 
       await Marks.findOneAndUpdate(
         { studentId, examinationId, subjectId },
@@ -146,17 +177,18 @@ exports.saveGridMarks = async (req, res, next) => {
           subjectId,
           subjectName: subject.subjectName,
           subjectCode: subject.subjectCode,
-          components,
-          totalMaxMarks: validation.totalMax,
-          totalObtainedMarks: validation.totalObtained,
-          percentage,
-          isPassed,
+          components: finalComponents || [],
+          totalMaxMarks: totalValidation.totalMax,
+          totalObtainedMarks: specialStatus ? 0 : totalValidation.totalObtained,
+          percentage: specialStatus ? 0 : percentage,
+          isPassed: specialStatus ? false : isPassed,
+          status: specialStatus || 'PRESENT',
           enteredBy: req.user._id
         },
         { upsert: true, new: true }
       );
 
-      successful.push({ studentId, admissionNo: student.admissionNo, totalObtained: validation.totalObtained });
+      successful.push({ studentId, admissionNo: student.admissionNo, totalObtained: specialStatus ? 0 : totalValidation.totalObtained });
     }
 
     await logAction({

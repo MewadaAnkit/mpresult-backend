@@ -12,24 +12,24 @@ const { ROLES } = require('../constants/roles');
 
 // Sessions
 router.route('/sessions')
-  .get(protect, getSessions)
+  .get(getSessions)
   .post(protect, authorize(ROLES.ADMIN, ROLES.PRINCIPAL), createSession);
 
 router.put('/sessions/:id/set-current', protect, authorize(ROLES.ADMIN, ROLES.PRINCIPAL), setCurrentSession);
 
 // Classes
 router.route('/classes')
-  .get(protect, getClasses)
+  .get(getClasses)
   .post(protect, authorize(ROLES.ADMIN, ROLES.EXAM_INCHARGE), createClass);
 
 // Sections
 router.route('/sections')
-  .get(protect, getSections)
+  .get(getSections)
   .post(protect, authorize(ROLES.ADMIN, ROLES.EXAM_INCHARGE), createSection);
 
 // Streams
 router.route('/streams')
-  .get(protect, getStreams)
+  .get(getStreams)
   .post(protect, authorize(ROLES.ADMIN), createStream);
 
 module.exports = router;

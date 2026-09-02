@@ -20,6 +20,9 @@ exports.getFeeHeads = async (req, res, next) => {
 exports.createFeeHead = async (req, res, next) => {
   try {
     const { name, code, description, isOptional } = req.body;
+    if (!name || !code) {
+      return res.status(400).json({ success: false, message: 'Fee Head name and code are required' });
+    }
     const head = await FeeHead.create({
       name,
       code: code.toUpperCase(),
@@ -158,12 +161,22 @@ exports.searchStudentForFee = async (req, res, next) => {
         });
 
         if (!ledger) {
-          // If no ledger exists, create standard ledger from class fee structure or fallback
+          // If no ledger exists, try to create from class fee structure
           const structure = await FeeStructure.findOne({
             academicSession: session || st.currentSession,
             className: st.currentClass
           });
-          const totalFee = structure ? structure.annualTotal : 15000;
+
+          if (!structure) {
+            // No fee structure configured — return student with null ledger and a warning
+            return {
+              student: st,
+              ledger: null,
+              warning: `No fee structure configured for Class ${st.currentClass} in session ${session || st.currentSession}. Please set up a fee structure first.`
+            };
+          }
+
+          const totalFee = structure.annualTotal;
           ledger = await StudentFeeLedger.create({
             student: st._id,
             admissionNo: st.admissionNo,
@@ -214,10 +227,48 @@ exports.collectFeePayment = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Student not found' });
     }
 
-    // Generate unique Receipt No: REC-2025-0001
-    const count = await FeePayment.countDocuments({ academicSession });
+    // Validate payment amount
+    const paidAmt = Number(amountPaid);
+    if (!paidAmt || paidAmt <= 0) {
+      return res.status(400).json({ success: false, message: 'Payment amount must be greater than zero' });
+    }
+
+    // Get current ledger to validate overpayment
+    const existingLedger = await StudentFeeLedger.findOne({ student: student._id, academicSession });
+    if (existingLedger) {
+      const effectiveDiscount = Number(discountAmount) || existingLedger.discountAmount || 0;
+      const effectiveNetFee = Math.max(0, existingLedger.totalFee - effectiveDiscount);
+      const effectiveBalance = Math.max(0, effectiveNetFee - (existingLedger.paidAmount || 0));
+      // Allow up to 5% tolerance for rounding/partial payments, but block significant overpayment
+      if (effectiveBalance > 0 && paidAmt > effectiveBalance * 1.05) {
+        return res.status(400).json({
+          success: false,
+          message: `Overpayment not allowed. Maximum payable amount is ₹${effectiveBalance.toFixed(2)}`
+        });
+      }
+    }
+
+    // Duplicate payment guard: prevent same student, same session, same amount within 60 seconds
+    const sixtySecondsAgo = new Date(Date.now() - 60000);
+    const recentDuplicate = await FeePayment.findOne({
+      student: student._id,
+      academicSession,
+      amountPaid: paidAmt,
+      paymentDate: { $gte: sixtySecondsAgo }
+    });
+    if (recentDuplicate) {
+      return res.status(409).json({
+        success: false,
+        message: 'Duplicate payment detected. This payment was already processed within the last 60 seconds.',
+        existingReceiptNo: recentDuplicate.receiptNo
+      });
+    }
+
+    // Generate unique Receipt No using timestamp + random suffix to avoid race conditions
     const sessionYear = academicSession.split('-')[0] || '2026';
-    const receiptNo = `REC-${sessionYear}-${String(count + 1).padStart(5, '0')}`;
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const randomSuffix = Math.random().toString(36).substr(2, 4).toUpperCase();
+    const receiptNo = `REC-${sessionYear}-${timestamp}-${randomSuffix}`;
 
     // Record Payment
     const payment = await FeePayment.create({

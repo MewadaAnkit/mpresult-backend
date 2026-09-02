@@ -51,6 +51,14 @@ const userSchema = new mongoose.Schema(
         trim: true
       }
     ],
+    // BUG-011 FIX: Link parent users to their children's student IDs
+    // Enforced in student profile, fee, and attendance routes for PARENT role
+    linkedStudents: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Student'
+      }
+    ],
     isActive: {
       type: Boolean,
       default: true

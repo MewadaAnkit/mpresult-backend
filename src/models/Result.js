@@ -184,7 +184,7 @@ const resultSchema = new mongoose.Schema(
     teacherRemarks: {
       type: String,
       trim: true,
-      default: 'VERY GOOD PERFORMANCE'
+      default: '' // BUG-027 FIX: No generic default — teacher must enter remarks explicitly
     },
     approvalStage: {
       type: String,

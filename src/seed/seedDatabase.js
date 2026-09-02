@@ -12,6 +12,8 @@ const SubjectCombination = require('../models/SubjectCombination');
 const GradeRule = require('../models/GradeRule');
 const PassingRule = require('../models/PassingRule');
 const ExaminationScheme = require('../models/ExaminationScheme');
+const Examination = require('../models/Examination');
+const ExamSchedule = require('../models/ExamSchedule');
 const Student = require('../models/Student');
 const StudentEnrollment = require('../models/StudentEnrollment');
 const Settings = require('../models/Settings');
@@ -66,7 +68,9 @@ const seed = async () => {
       StudentFeeLedger.deleteMany(),
       FeePayment.deleteMany(),
       Announcement.deleteMany(),
-      Certificate.deleteMany()
+      Certificate.deleteMany(),
+      Examination.deleteMany(),
+      ExamSchedule.deleteMany()
     ]);
     console.log('Cleaned old MP database records.');
 
@@ -798,7 +802,124 @@ const seed = async () => {
       issuedByName: 'Smt. Vandana Mishra (Principal)'
     });
 
-    console.log('Created Complete School ERP Seed Dataset (Fees, Staff, Inquiries, Timetable, Homework, Notices, Certificates).');
+    // 13.5 Create Examination & Exam Timetable Schedules
+    const halfYearlyExam = await Examination.create({
+      examName: 'Half-Yearly Examination 2025-26 (अर्धवार्षिक परीक्षा)',
+      examCode: 'HY_EXAM_2025',
+      sessionName: '2025-26',
+      examType: 'SUMMATIVE',
+      schemeId: schemeCls9._id,
+      applicableClasses: ['9', '10', '11', '12'],
+      startDate: new Date('2025-09-15'),
+      endDate: new Date('2025-09-24'),
+      description: 'MP Board Pattern Official Half-Yearly Summative Assessment'
+    });
+
+    // Seed Exam Schedule entries for Class 9
+    await ExamSchedule.create([
+      {
+        examination: halfYearlyExam._id,
+        examinationName: halfYearlyExam.examName,
+        academicSession: '2025-26',
+        className: '9',
+        sectionName: 'ALL',
+        subject: subHindi9._id,
+        subjectName: 'Hindi (हिंदी)',
+        subjectCode: 'HIN_01',
+        examDate: new Date('2025-09-15'),
+        dayOfWeek: 'Monday',
+        startTime: '09:00 AM',
+        endTime: '12:00 PM',
+        durationMinutes: 180,
+        examType: 'THEORY',
+        roomOrHall: 'Examination Hall A (Ground Floor)',
+        invigilatorName: 'Smt. Vandana Mishra',
+        instructions: 'Report 30 minutes before time. Bring School ID and Admit Card.',
+        status: 'PUBLISHED'
+      },
+      {
+        examination: halfYearlyExam._id,
+        examinationName: halfYearlyExam.examName,
+        academicSession: '2025-26',
+        className: '9',
+        sectionName: 'ALL',
+        subject: subEng9._id,
+        subjectName: 'English (अंग्रेजी)',
+        subjectCode: 'ENG_02',
+        examDate: new Date('2025-09-17'),
+        dayOfWeek: 'Wednesday',
+        startTime: '09:00 AM',
+        endTime: '12:00 PM',
+        durationMinutes: 180,
+        examType: 'THEORY',
+        roomOrHall: 'Examination Hall A (Ground Floor)',
+        invigilatorName: 'Anil Chouhan',
+        instructions: 'Report 30 minutes before time. Bring School ID and Admit Card.',
+        status: 'PUBLISHED'
+      },
+      {
+        examination: halfYearlyExam._id,
+        examinationName: halfYearlyExam.examName,
+        academicSession: '2025-26',
+        className: '9',
+        sectionName: 'ALL',
+        subject: subMath9._id,
+        subjectName: 'Mathematics (गणित)',
+        subjectCode: 'MATH_03',
+        examDate: new Date('2025-09-19'),
+        dayOfWeek: 'Friday',
+        startTime: '09:00 AM',
+        endTime: '12:00 PM',
+        durationMinutes: 180,
+        examType: 'THEORY',
+        roomOrHall: 'Examination Hall A (Ground Floor)',
+        invigilatorName: 'Pooja Verma',
+        instructions: 'Scientific calculators are strictly prohibited. Geometry box allowed.',
+        status: 'PUBLISHED'
+      },
+      {
+        examination: halfYearlyExam._id,
+        examinationName: halfYearlyExam.examName,
+        academicSession: '2025-26',
+        className: '9',
+        sectionName: 'ALL',
+        subject: subSci9._id,
+        subjectName: 'Science (विज्ञान)',
+        subjectCode: 'SCI_04',
+        examDate: new Date('2025-09-22'),
+        dayOfWeek: 'Monday',
+        startTime: '09:00 AM',
+        endTime: '12:00 PM',
+        durationMinutes: 180,
+        examType: 'THEORY',
+        roomOrHall: 'Examination Hall A (Ground Floor)',
+        invigilatorName: 'Rajesh Kumar Saxena',
+        instructions: 'Report 30 minutes before time. Bring School ID and Admit Card.',
+        status: 'PUBLISHED'
+      },
+      {
+        examination: halfYearlyExam._id,
+        examinationName: halfYearlyExam.examName,
+        academicSession: '2025-26',
+        className: '9',
+        sectionName: 'ALL',
+        subject: subSci9._id,
+        subjectName: 'Science Practical & Lab Viva (विज्ञान प्रायोगिक)',
+        subjectCode: 'SCI_04_PR',
+        examDate: new Date('2025-09-24'),
+        dayOfWeek: 'Wednesday',
+        startTime: '10:00 AM',
+        endTime: '01:00 PM',
+        durationMinutes: 180,
+        examType: 'PRACTICAL',
+        roomOrHall: 'Physics & Chemistry Lab 1',
+        invigilatorName: 'Rajesh Kumar Saxena (External: Dr. S.K. Dixit)',
+        instructions: 'Wear lab coat. Bring completed practical journal signed by teacher.',
+        status: 'PUBLISHED'
+      }
+    ]);
+
+    console.log('Created Complete School ERP Seed Dataset (Fees, Staff, Inquiries, Timetable, Homework, Exam Schedules, Notices, Certificates).');
 
     // 14. Create School Settings
     await Settings.create({

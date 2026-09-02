@@ -3,6 +3,25 @@ const jwt = require('jsonwebtoken');
 const { logAction } = require('../services/auditService');
 const { AUDIT_ACTIONS } = require('../constants/auditActions');
 
+// BUG-007 FIX: In-memory token blacklist for server-side JWT invalidation on logout
+// Tokens are stored with their expiry timestamp and auto-purged when expired
+const tokenBlacklist = new Map();
+
+// Clean up expired tokens every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, expiry] of tokenBlacklist.entries()) {
+    if (expiry < now) tokenBlacklist.delete(token);
+  }
+}, 60 * 60 * 1000);
+
+exports.tokenBlacklist = tokenBlacklist;
+
+// BUG-012 FIX: Brute-force protection — track failed login attempts per IP + email
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
+
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET || 'mp_board_rms_jwt_super_secret_key_2026_secure', {
     expiresIn: process.env.JWT_EXPIRE || '7d'
@@ -22,8 +41,31 @@ exports.login = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Please provide email and password' });
     }
 
+    // BUG-012 FIX: Brute-force protection
+    const attemptKey = `${req.ip}:${email.toLowerCase()}`;
+    const attemptData = loginAttempts.get(attemptKey) || { count: 0, lastAttempt: 0 };
+    const now = Date.now();
+
+    // Reset if lockout period has passed
+    if (attemptData.count >= MAX_ATTEMPTS && now - attemptData.lastAttempt < LOCKOUT_MS) {
+      const remainingMs = LOCKOUT_MS - (now - attemptData.lastAttempt);
+      const remainingMin = Math.ceil(remainingMs / 60000);
+      return res.status(429).json({
+        success: false,
+        message: `Account temporarily locked due to too many failed attempts. Try again in ${remainingMin} minute(s).`
+      });
+    }
+
+    // Reset counter if lockout period has passed
+    if (now - attemptData.lastAttempt >= LOCKOUT_MS) {
+      attemptData.count = 0;
+    }
+
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
+      attemptData.count++;
+      attemptData.lastAttempt = now;
+      loginAttempts.set(attemptKey, attemptData);
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
@@ -33,8 +75,20 @@ exports.login = async (req, res, next) => {
 
     const isMatch = await user.matchPassword(password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      attemptData.count++;
+      attemptData.lastAttempt = now;
+      loginAttempts.set(attemptKey, attemptData);
+      const attemptsLeft = Math.max(0, MAX_ATTEMPTS - attemptData.count);
+      return res.status(401).json({
+        success: false,
+        message: attemptsLeft > 0
+          ? `Invalid credentials. ${attemptsLeft} attempt(s) remaining before account lock.`
+          : 'Invalid credentials. Account locked for 15 minutes.'
+      });
     }
+
+    // Successful login — reset attempt counter
+    loginAttempts.delete(attemptKey);
 
     user.lastLogin = Date.now();
     await user.save();
@@ -66,6 +120,35 @@ exports.login = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc    Logout user — invalidate JWT server-side
+ * @route   POST /api/auth/logout
+ * @access  Private
+ */
+exports.logout = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      // BUG-007 FIX: Add to blacklist until it naturally expires (7 days)
+      const expiry = Date.now() + (7 * 24 * 60 * 60 * 1000);
+      tokenBlacklist.set(token, expiry);
+    }
+
+    await logAction({
+      req,
+      action: AUDIT_ACTIONS.LOGOUT || 'LOGOUT',
+      module: 'AUTH',
+      description: `User ${req.user?.name || 'Unknown'} logged out`
+    });
+
+    res.status(200).json({ success: true, message: 'Logged out successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 /**
  * @desc    Get current user profile
@@ -150,10 +233,10 @@ exports.getAllUsers = async (req, res, next) => {
  */
 exports.updateUser = async (req, res, next) => {
   try {
-    const { name, role, phone, designation, assignedClasses, assignedSubjects, isActive } = req.body;
+    const { name, role, phone, designation, assignedClasses, assignedSubjects, isActive, linkedStudents } = req.body;
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { name, role, phone, designation, assignedClasses, assignedSubjects, isActive },
+      { name, role, phone, designation, assignedClasses, assignedSubjects, isActive, linkedStudents },
       { new: true, runValidators: true }
     );
 

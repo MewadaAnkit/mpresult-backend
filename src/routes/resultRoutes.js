@@ -23,7 +23,8 @@ router.post('/calculate-class', protect, authorize(ROLES.ADMIN, ROLES.EXAM_INCHA
 router.put('/approval-stage', protect, authorize(ROLES.ADMIN, ROLES.PRINCIPAL, ROLES.EXAM_INCHARGE, ROLES.TEACHER), updateApprovalStage);
 router.put('/:id/reopen', protect, authorize(ROLES.ADMIN, ROLES.PRINCIPAL), reopenResult);
 
-router.get('/bulk-download', protect, downloadBulkMarksheetsZip);
+// BUG-009 FIX: Bulk download restricted to Admin/Principal/Exam Incharge
+router.get('/bulk-download', protect, authorize(ROLES.ADMIN, ROLES.PRINCIPAL, ROLES.EXAM_INCHARGE), downloadBulkMarksheetsZip);
 router.get('/:id/pdf', protect, downloadMarksheetPdf);
 
 router.route('/:id')

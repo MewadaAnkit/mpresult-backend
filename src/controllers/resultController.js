@@ -7,6 +7,7 @@ const { generateMarksheetPdf } = require('../services/pdfService');
 const { logAction } = require('../services/auditService');
 const { AUDIT_ACTIONS } = require('../constants/auditActions');
 const { APPROVAL_STAGES } = require('../constants/resultStatuses');
+const { ROLES } = require('../constants/roles');
 
 /**
  * Calculate result for a single student
@@ -99,6 +100,24 @@ exports.updateApprovalStage = async (req, res, next) => {
 
     if (!Object.values(APPROVAL_STAGES).includes(targetStage)) {
       return res.status(400).json({ success: false, message: 'Invalid target approval stage' });
+    }
+
+    // BUG-006 FIX: Enforce role-based stage restrictions
+    const userRole = req.user.role;
+    const stageRoleMap = {
+      [APPROVAL_STAGES.TEACHER_SUBMITTED]: [ROLES.ADMIN, ROLES.PRINCIPAL, ROLES.EXAM_INCHARGE, ROLES.TEACHER],
+      [APPROVAL_STAGES.EXAMINATION_VERIFIED]: [ROLES.ADMIN, ROLES.PRINCIPAL, ROLES.EXAM_INCHARGE],
+      [APPROVAL_STAGES.PRINCIPAL_APPROVED]: [ROLES.ADMIN, ROLES.PRINCIPAL],
+      [APPROVAL_STAGES.PUBLISHED]: [ROLES.ADMIN, ROLES.PRINCIPAL],
+      [APPROVAL_STAGES.DRAFT]: [ROLES.ADMIN, ROLES.PRINCIPAL, ROLES.EXAM_INCHARGE]
+    };
+
+    const allowedRoles = stageRoleMap[targetStage] || [ROLES.ADMIN];
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        message: `Your role (${userRole}) is not authorized to move results to stage: ${targetStage}`
+      });
     }
 
     const updateFields = { approvalStage: targetStage };

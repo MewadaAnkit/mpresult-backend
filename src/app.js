@@ -73,7 +73,9 @@ app.use('/api/fees', feeRoutes);
 app.use('/api/communication', communicationRoutes);
 app.use('/api/certificates', certificateRoutes);
 
-// Examination & Results (Existing preserved engine)
+// Examination & Results (Existing preserved engine & Exam Schedule)
+const examScheduleRoutes = require('./routes/examScheduleRoutes');
+app.use('/api/exam-schedules', examScheduleRoutes);
 app.use('/api/schemes', schemeRoutes);
 app.use('/api/examinations', examRoutes);
 app.use('/api/marks', marksRoutes);
