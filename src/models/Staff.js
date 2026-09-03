@@ -40,6 +40,22 @@ const staffSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
+    cadre: {
+      type: String,
+      enum: ['PRT', 'TGT', 'PGT', 'SPECIALIST', 'OTHER'],
+      default: 'TGT'
+    },
+    teachingWings: [
+      {
+        type: String,
+        enum: ['PRIMARY', 'MIDDLE', 'SECONDARY', 'SENIOR_SECONDARY', 'ALL']
+      }
+    ],
+    primarySubject: {
+      type: String,
+      trim: true,
+      default: ''
+    },
     department: {
       type: String,
       enum: ['ACADEMIC', 'ADMINISTRATION', 'ACCOUNTS', 'LIBRARY', 'TRANSPORT', 'SPORTS', 'SUPPORT'],

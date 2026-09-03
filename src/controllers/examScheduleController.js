@@ -521,3 +521,174 @@ exports.getPrintableClassTimetable = async (req, res) => {
     });
   }
 };
+
+// @desc    Auto-generate exam schedule for a class with gap days and Sunday skipping
+// @route   POST /api/exam-schedules/auto-generate
+exports.autoGenerateExamSchedule = async (req, res) => {
+  try {
+    const {
+      examinationId,
+      academicSession,
+      className,
+      sectionName = 'ALL',
+      startDate,
+      startTime = '09:00 AM',
+      endTime = '12:00 PM',
+      gapDays = 1,
+      skipSundays = true,
+      skipSaturdays = false,
+      roomOrHall = 'Main Examination Hall A',
+      examType = 'THEORY',
+      saveImmediately = false
+    } = req.body;
+
+    if (!examinationId || !className || !startDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Examination, class name, and start date are required.'
+      });
+    }
+
+    const exam = await Examination.findById(examinationId);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Examination not found.' });
+    }
+
+    const cleanClass = String(className).trim().toUpperCase();
+    const cleanSection = String(sectionName || 'ALL').trim().toUpperCase();
+
+    // Fetch active subjects for this class
+    const allSubjects = await Subject.find({ isActive: true }).sort({ displayOrder: 1, subjectName: 1 });
+    const classSubjects = allSubjects.filter((s) => {
+      if (!s.applicableClasses || s.applicableClasses.length === 0) return true;
+      const app = s.applicableClasses.map((c) => String(c).toUpperCase());
+      return app.includes(cleanClass) || app.includes('ALL');
+    });
+
+    const activeList = classSubjects.length > 0 ? classSubjects : allSubjects.slice(0, 6);
+    if (activeList.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No subjects found for this class to generate exam schedule.'
+      });
+    }
+
+    // Helper for weekend check
+    const isExcludedDay = (date) => {
+      const d = date.getDay();
+      if (skipSundays && d === 0) return true;
+      if (skipSaturdays && d === 6) return true;
+      return false;
+    };
+
+    // Calculate duration in minutes
+    const startMin = timeToMinutes(startTime);
+    const endMin = timeToMinutes(endTime);
+    const duration = endMin > startMin ? endMin - startMin : 180;
+
+    const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    // Start date cursor
+    let currentCursor = new Date(startDate);
+    while (isExcludedDay(currentCursor)) {
+      currentCursor.setDate(currentCursor.getDate() + 1);
+    }
+
+    const generatedEntries = [];
+
+    for (let i = 0; i < activeList.length; i++) {
+      const sub = activeList[i];
+      while (isExcludedDay(currentCursor)) {
+        currentCursor.setDate(currentCursor.getDate() + 1);
+      }
+
+      const dateStr = currentCursor.toISOString().split('T')[0];
+      const dayName = daysOfWeek[currentCursor.getDay()];
+
+      generatedEntries.push({
+        subjectId: sub._id,
+        subjectName: sub.subjectName || sub.name || 'Subject',
+        subjectCode: sub.subjectCode || sub.code || `SUB_${i + 1}`,
+        examDate: dateStr,
+        dayOfWeek: dayName,
+        startTime,
+        endTime,
+        durationMinutes: duration,
+        examType: sub.hasPractical ? 'THEORY' : examType,
+        roomOrHall,
+        invigilatorName: '',
+        instructions: exam.description || 'Report 30 minutes before time with Admit Card and ID.',
+        maxMarks: sub.totalMaxMarks || 100,
+        minPassingMarks: sub.totalPassingMarks || 33,
+        isCustomSubject: false
+      });
+
+      // Advance by 1 + gapDays
+      const advanceDays = 1 + (parseInt(gapDays, 10) || 0);
+      currentCursor.setDate(currentCursor.getDate() + advanceDays);
+    }
+
+    // Conflict Check against existing schedules
+    const existingSchedules = await ExamSchedule.find({
+      academicSession: academicSession || exam.sessionName,
+      examination: { $ne: exam._id },
+      examDate: { $gte: new Date(startDate) }
+    }).lean();
+
+    const conflicts = detectConflicts(generatedEntries, existingSchedules);
+
+    // If saveImmediately, persist them directly
+    if (saveImmediately) {
+      const targetDocs = generatedEntries.map((item) => {
+        const d = new Date(item.examDate);
+        return {
+          examination: exam._id,
+          examinationName: exam.examName,
+          academicSession: academicSession || exam.sessionName,
+          className: cleanClass,
+          sectionName: cleanSection,
+          subject: item.subjectId || null,
+          subjectName: item.subjectName,
+          subjectCode: item.subjectCode || '',
+          examDate: d,
+          dayOfWeek: item.dayOfWeek,
+          startTime: item.startTime,
+          endTime: item.endTime,
+          durationMinutes: item.durationMinutes,
+          examType: item.examType,
+          roomOrHall: item.roomOrHall,
+          invigilatorName: item.invigilatorName || '',
+          instructions: item.instructions,
+          maxMarks: Number(item.maxMarks) || 100,
+          minPassingMarks: Number(item.minPassingMarks) || 33,
+          status: 'DRAFT',
+          createdBy: req.user?._id
+        };
+      });
+
+      const saved = await ExamSchedule.insertMany(targetDocs);
+      return res.status(201).json({
+        success: true,
+        message: `Successfully generated and saved ${saved.length} exam schedule entries for Class ${cleanClass}`,
+        isSaved: true,
+        data: saved,
+        conflicts
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Successfully generated ${generatedEntries.length} exam schedule entries preview`,
+      isSaved: false,
+      data: generatedEntries,
+      conflicts
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to auto-generate exam schedule',
+      error: err.message
+    });
+  }
+};
+

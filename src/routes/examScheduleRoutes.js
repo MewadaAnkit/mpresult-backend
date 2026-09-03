@@ -8,7 +8,8 @@ const {
   updateExamScheduleEntry,
   publishExamSchedule,
   deleteExamScheduleEntry,
-  getPrintableClassTimetable
+  getPrintableClassTimetable,
+  autoGenerateExamSchedule
 } = require('../controllers/examScheduleController');
 const { protect } = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/rbacMiddleware');
@@ -19,6 +20,7 @@ router.use(protect);
 router.get('/dashboard-stats', getScheduleDashboardStats);
 router.post('/check-conflicts', checkScheduleConflicts);
 router.get('/printable', getPrintableClassTimetable);
+router.post('/auto-generate', authorize(ROLES.ADMIN, ROLES.PRINCIPAL, ROLES.EXAM_INCHARGE), autoGenerateExamSchedule);
 
 router.route('/')
   .get(getExamSchedules)

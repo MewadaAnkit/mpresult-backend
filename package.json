@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "seed": "node src/seed/seedDatabase.js",
-    "seed:subjects": "node src/seed/seedSubjects.js"
+    "seed:subjects": "node src/seed/seedSubjects.js",
+    "seed:staff": "node src/seed/seedStaff.js"
   },
   "dependencies": {
     "archiver": "^7.0.1",
