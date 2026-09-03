@@ -34,6 +34,7 @@ const Certificate = require('../models/Certificate');
 
 const { ROLES } = require('../constants/roles');
 const { CLASS_MODES, COMPONENT_TYPES, EXAMINATION_TYPES } = require('../constants/examinationTypes');
+const { seedAllClassSubjects } = require('./subjectSeeder');
 
 const seed = async () => {
   try {
@@ -435,10 +436,10 @@ const seed = async () => {
         { name: 'Theory', code: 'TH', type: COMPONENT_TYPES.THEORY, maxMarks: 80, passingMarks: 26 },
         { name: 'Project Assessment', code: 'PR', type: COMPONENT_TYPES.PROJECT, maxMarks: 20, passingMarks: 7 }
       ],
-      displayOrder: 4
-    });
-
     console.log('Created Subjects with distinct Theory/Practical/Project splits.');
+
+    // Seed all standard MP Board curriculum subjects across Classes 1 through 12
+    await seedAllClassSubjects({ verbose: true });
 
     // 11. Create Subject Combinations for Class 11
     const pcmCombo = await SubjectCombination.create({

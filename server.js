@@ -6,6 +6,10 @@ const startServer = async () => {
   // Connect to MP Result Management isolated database
   await connectDB();
 
+  // Auto-seed class subjects if database has missing subjects
+  const { autoSeedSubjectsIfEmpty } = require('./src/seed/subjectSeeder');
+  await autoSeedSubjectsIfEmpty();
+
   const PORT = config.PORT || 5001;
 
   const server = app.listen(PORT, () => {

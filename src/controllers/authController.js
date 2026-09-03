@@ -252,3 +252,27 @@ exports.updateUser = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * @desc    Delete user (Admin only)
+ * @route   DELETE /api/auth/users/:id
+ * @access  Private (Admin)
+ */
+exports.deleteUser = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User account not found' });
+    }
+
+    // Safety check: Cannot delete self
+    if (req.user && req.user._id && req.user._id.toString() === user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own logged-in administrator account.' });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+    res.status(200).json({ success: true, message: `User account "${user.name}" deleted successfully.` });
+  } catch (error) {
+    next(error);
+  }
+};
