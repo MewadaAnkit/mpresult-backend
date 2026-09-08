@@ -113,7 +113,8 @@ exports.login = async (req, res, next) => {
         role: user.role,
         designation: user.designation,
         assignedClasses: user.assignedClasses,
-        assignedSubjects: user.assignedSubjects
+        assignedSubjects: user.assignedSubjects,
+        customPermissions: user.customPermissions || []
       }
     });
   } catch (error) {
@@ -174,7 +175,7 @@ exports.getMe = async (req, res, next) => {
  */
 exports.createUser = async (req, res, next) => {
   try {
-    const { name, email, password, role, phone, designation, assignedClasses, assignedSubjects } = req.body;
+    const { name, email, password, role, phone, designation, assignedClasses, assignedSubjects, customPermissions } = req.body;
 
     const userExists = await User.findOne({ email });
     if (userExists) {
@@ -189,7 +190,8 @@ exports.createUser = async (req, res, next) => {
       phone,
       designation,
       assignedClasses: assignedClasses || [],
-      assignedSubjects: assignedSubjects || []
+      assignedSubjects: assignedSubjects || [],
+      customPermissions: customPermissions || []
     });
 
     await logAction({
@@ -233,10 +235,10 @@ exports.getAllUsers = async (req, res, next) => {
  */
 exports.updateUser = async (req, res, next) => {
   try {
-    const { name, role, phone, designation, assignedClasses, assignedSubjects, isActive, linkedStudents } = req.body;
+    const { name, role, phone, designation, assignedClasses, assignedSubjects, isActive, linkedStudents, customPermissions } = req.body;
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { name, role, phone, designation, assignedClasses, assignedSubjects, isActive, linkedStudents },
+      { name, role, phone, designation, assignedClasses, assignedSubjects, isActive, linkedStudents, customPermissions },
       { new: true, runValidators: true }
     );
 

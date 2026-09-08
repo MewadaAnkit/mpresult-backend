@@ -56,7 +56,7 @@ const protect = async (req, res, next) => {
   }
 };
 
-const authorize = (...roles) => {
+const authorize = (...rolesOrPermissions) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -65,13 +65,26 @@ const authorize = (...roles) => {
       });
     }
 
-    if (!roles.includes(req.user.role) && req.user.role !== ROLES.ADMIN) {
-      return res.status(403).json({
-        success: false,
-        message: `Role ${req.user.role} is not authorized to access this resource`
-      });
+    if (req.user.role === ROLES.ADMIN) {
+      return next();
     }
-    next();
+
+    if (rolesOrPermissions.includes(req.user.role)) {
+      return next();
+    }
+
+    const userPerms = [
+      ...(ROLE_PERMISSIONS[req.user.role] || []),
+      ...(req.user.customPermissions || [])
+    ];
+    if (rolesOrPermissions.some((item) => userPerms.includes(item))) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: `Role ${req.user.role} is not authorized to access this resource`
+    });
   };
 };
 
@@ -88,7 +101,10 @@ const requirePermission = (permission) => {
       return next();
     }
 
-    const userPerms = ROLE_PERMISSIONS[req.user.role] || [];
+    const userPerms = [
+      ...(ROLE_PERMISSIONS[req.user.role] || []),
+      ...(req.user.customPermissions || [])
+    ];
     if (userPerms.includes(permission)) {
       return next();
     }

@@ -39,6 +39,31 @@ const settingsSchema = new mongoose.Schema(
       type: String,
       default: 'https://mpbse.nic.in'
     },
+    // MP Sankul Kendra (Cluster) Configuration
+    sankulName: {
+      type: String,
+      default: 'शासकीय कन्या उच्चतर माध्यमिक विद्यालय संकुल केंद्र क्रमांक 2'
+    },
+    sankulCode: {
+      type: String,
+      default: 'SKL-233201-04'
+    },
+    sankulPrincipalName: {
+      type: String,
+      default: 'संकुल प्राचार्य / संकुल समन्वयक'
+    },
+    sankulEmail: {
+      type: String,
+      default: 'sankul.kendra2@mp.gov.in'
+    },
+    blockName: {
+      type: String,
+      default: 'फंदा (Bhopal Urban)'
+    },
+    districtName: {
+      type: String,
+      default: 'भोपाल (Madhya Pradesh)'
+    },
     logoLeft: {
       type: String,
       default: '' // School logo

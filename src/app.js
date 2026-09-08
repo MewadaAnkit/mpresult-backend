@@ -28,6 +28,7 @@ const homeworkRoutes = require('./routes/homeworkRoutes');
 const feeRoutes = require('./routes/feeRoutes');
 const communicationRoutes = require('./routes/communicationRoutes');
 const certificateRoutes = require('./routes/certificateRoutes');
+const sankulRoutes = require('./routes/sankulRoutes');
 
 const app = express();
 
@@ -72,6 +73,7 @@ app.use('/api/homework', homeworkRoutes);
 app.use('/api/fees', feeRoutes);
 app.use('/api/communication', communicationRoutes);
 app.use('/api/certificates', certificateRoutes);
+app.use('/api/sankul', sankulRoutes);
 
 // Examination & Results (Existing preserved engine & Exam Schedule)
 const examScheduleRoutes = require('./routes/examScheduleRoutes');

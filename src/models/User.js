@@ -59,6 +59,12 @@ const userSchema = new mongoose.Schema(
         ref: 'Student'
       }
     ],
+    customPermissions: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
     isActive: {
       type: Boolean,
       default: true

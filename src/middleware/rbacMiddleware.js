@@ -1,17 +1,43 @@
 const { ROLE_PERMISSIONS, ROLES } = require('../constants/roles');
 
 /**
- * Grant access to specific roles
+ * Grant access to specific roles or fine-grained permissions
  */
-const authorize = (...roles) => {
+const authorize = (...rolesOrPermissions) => {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({
+    if (!req.user) {
+      return res.status(401).json({
         success: false,
-        message: `User role '${req.user ? req.user.role : 'Guest'}' is not authorized to access this resource.`
+        message: 'Authentication required'
       });
     }
-    next();
+
+    // Admin has super-user access
+    if (req.user.role === ROLES.ADMIN) {
+      return next();
+    }
+
+    // Direct role match
+    if (rolesOrPermissions.includes(req.user.role)) {
+      return next();
+    }
+
+    // Combined user permissions (role permissions + custom permissions)
+    const userPerms = [
+      ...(ROLE_PERMISSIONS[req.user.role] || []),
+      ...(req.user.customPermissions || [])
+    ];
+
+    // Permission match
+    const hasPerm = rolesOrPermissions.some((item) => userPerms.includes(item));
+    if (hasPerm) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: `User role '${req.user.role}' is not authorized to access this resource.`
+    });
   };
 };
 
@@ -28,8 +54,11 @@ const requirePermission = (...permissions) => {
       return next(); // Admin has all permissions
     }
 
-    const userPerms = ROLE_PERMISSIONS[req.user.role] || [];
-    const hasPerm = permissions.some(p => userPerms.includes(p));
+    const userPerms = [
+      ...(ROLE_PERMISSIONS[req.user.role] || []),
+      ...(req.user.customPermissions || [])
+    ];
+    const hasPerm = permissions.some((p) => userPerms.includes(p));
 
     if (!hasPerm) {
       return res.status(403).json({
