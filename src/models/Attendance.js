@@ -31,6 +31,11 @@ const attendanceRecordSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: ''
+    },
+    mobileNo: {
+      type: String,
+      trim: true,
+      default: ''
     }
   },
   { _id: false }

@@ -158,15 +158,21 @@ exports.createStudent = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Student name contains invalid characters. Only letters, spaces, and dots are allowed.' });
     }
 
-    if (!admissionNo || !admissionNo.trim()) {
-      return res.status(400).json({ success: false, message: 'Admission Number is required' });
-    }
-    const cleanAdmissionNo = admissionNo.trim().toUpperCase();
-
-    // Check duplicate admission number
-    const existing = await Student.findOne({ admissionNo: cleanAdmissionNo });
-    if (existing) {
-      return res.status(409).json({ success: false, message: `A student with admission number ${cleanAdmissionNo} already exists` });
+    let cleanAdmissionNo;
+    if (admissionNo && admissionNo.trim()) {
+      cleanAdmissionNo = admissionNo.trim().toUpperCase();
+      const existing = await Student.findOne({ admissionNo: cleanAdmissionNo });
+      if (existing) {
+        return res.status(409).json({ success: false, message: `A student with admission number ${cleanAdmissionNo} already exists` });
+      }
+    } else {
+      const totalCount = await Student.countDocuments();
+      cleanAdmissionNo = `ADM-${new Date().getFullYear()}-${String(totalCount + 1).padStart(4, '0')}`;
+      let counter = 1;
+      while (await Student.findOne({ admissionNo: cleanAdmissionNo })) {
+        cleanAdmissionNo = `ADM-${new Date().getFullYear()}-${String(totalCount + 1 + counter).padStart(4, '0')}`;
+        counter++;
+      }
     }
 
     const cleanFatherName = fatherName ? fatherName.replace(/<[^>]*>?/gm, '').trim() : '';
@@ -193,9 +199,26 @@ exports.createStudent = async (req, res, next) => {
       }
     }
 
+    // Calculate next roll number if not provided
+    const targetClass = (currentClass || req.body.currentClass || '1').toUpperCase();
+    const targetSection = (currentSection || req.body.currentSection || 'A').toUpperCase();
+    const targetSession = currentSession || req.body.currentSession || '2025-26';
+
+    const cleanRollNo = currentRollNo
+      ? String(currentRollNo).trim()
+      : String((await Student.countDocuments({
+          currentClass: targetClass,
+          currentSection: targetSection,
+          currentSession: targetSession
+        })) + 1);
+
     const studentData = {
       ...req.body,
       admissionNo: cleanAdmissionNo,
+      currentRollNo: cleanRollNo,
+      currentClass: targetClass,
+      currentSection: targetSection,
+      currentSession: targetSession,
       studentName: cleanStudentName,
       fatherName: cleanFatherName,
       motherName: cleanMotherName,
@@ -215,8 +238,24 @@ exports.createStudent = async (req, res, next) => {
       className: student.currentClass,
       sectionName: student.currentSection,
       rollNo: student.currentRollNo,
-      streamName: student.currentStream,
+      streamName: student.currentStream || '',
       status: 'ACTIVE'
+    });
+
+    // Initialize Fee Ledger for the student
+    await StudentFeeLedger.create({
+      student: student._id,
+      admissionNo: student.admissionNo,
+      studentName: student.studentName,
+      academicSession: student.currentSession || '2025-26',
+      className: student.currentClass || '1',
+      sectionName: student.currentSection || 'A',
+      totalFee: 15000,
+      discountAmount: 0,
+      netPayable: 15000,
+      paidAmount: 0,
+      balanceAmount: 15000,
+      status: 'PENDING'
     });
 
     await logAction({

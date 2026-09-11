@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const {
   getFeeHeads,
@@ -9,7 +9,8 @@ const {
   collectFeePayment,
   getReceipts,
   getReceiptById,
-  getFinancialSummary
+  getFinancialSummary,
+  getDefaulters
 } = require('../controllers/feeController');
 const { protect, requirePermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/roles');
@@ -29,5 +30,6 @@ router.get('/receipts', requirePermission(PERMISSIONS.VIEW_FEES), getReceipts);
 router.get('/receipts/:id', requirePermission(PERMISSIONS.VIEW_FEES), getReceiptById);
 
 router.get('/summary', requirePermission(PERMISSIONS.VIEW_FINANCIAL_REPORTS), getFinancialSummary);
+router.get('/defaulters', requirePermission(PERMISSIONS.VIEW_FEES), getDefaulters);
 
 module.exports = router;

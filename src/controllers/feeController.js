@@ -426,3 +426,61 @@ exports.getFinancialSummary = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Get fee defaulters (students with pending balance)
+// @route   GET /api/fees/defaulters
+exports.getDefaulters = async (req, res, next) => {
+  try {
+    const { session, className, minBalance = 0, sortBy = 'balanceAmount' } = req.query;
+
+    const query = { balanceAmount: { $gt: Number(minBalance) } };
+    if (session) query.academicSession = session;
+    if (className) query.className = className.toUpperCase();
+
+    const ledgers = await StudentFeeLedger.find(query)
+      .sort({ [sortBy]: -1 })
+      .limit(500);
+
+    // Enrich with student mobile numbers for WhatsApp
+    const enriched = await Promise.all(
+      ledgers.map(async (l) => {
+        const st = await Student.findOne({
+          $or: [
+            { admissionNo: l.admissionNo },
+            { studentName: l.studentName, currentSession: l.academicSession }
+          ]
+        }).select('mobileNo parentMobile fatherMobile fatherName motherName');
+
+        return {
+          _id: l._id,
+          studentName: l.studentName,
+          admissionNo: l.admissionNo,
+          className: l.className,
+          sectionName: l.sectionName,
+          academicSession: l.academicSession,
+          totalFee: l.totalFee,
+          paidAmount: l.paidAmount,
+          balanceAmount: l.balanceAmount,
+          discountAmount: l.discountAmount,
+          status: l.status,
+          mobileNo: st?.mobileNo || st?.parentMobile || st?.fatherMobile || null,
+          fatherName: st?.fatherName || null,
+        };
+      })
+    );
+
+    // Summary stats
+    const totalDefaulters = enriched.length;
+    const totalPendingAmount = enriched.reduce((sum, d) => sum + (d.balanceAmount || 0), 0);
+
+    res.status(200).json({
+      success: true,
+      count: totalDefaulters,
+      totalPendingAmount,
+      data: enriched
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

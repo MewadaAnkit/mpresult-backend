@@ -1,5 +1,7 @@
 const Attendance = require('../models/Attendance');
 const Student = require('../models/Student');
+const TeacherAllocation = require('../models/TeacherAllocation');
+const Staff = require('../models/Staff');
 
 // @desc    Get attendance for a specific class on a date
 // @route   GET /api/attendance/daily
@@ -43,6 +45,7 @@ exports.getDailyAttendance = async (req, res, next) => {
       admissionNo: s.admissionNo,
       rollNo: s.currentRollNo,
       studentName: s.studentName,
+      mobileNo: s.mobileNo || s.phone || '',
       status: 'PRESENT',
       remarks: ''
     }));
@@ -80,9 +83,38 @@ exports.submitDailyAttendance = async (req, res, next) => {
     const attendanceDate = new Date(date);
     attendanceDate.setHours(0, 0, 0, 0);
 
-    const presentCount = records.filter((r) => r.status === 'PRESENT').length;
-    const absentCount = records.filter((r) => r.status === 'ABSENT').length;
-    const lateCount = records.filter((r) => r.status === 'LATE' || r.status === 'HALF_DAY').length;
+    // Sanitize records to ensure student, admissionNo, rollNo, studentName and mobileNo are present
+    const sanitizedRecords = await Promise.all(records.map(async (r) => {
+      const sId = r.student || r.studentId || r._id;
+      let admNo = r.admissionNo;
+      let sRoll = r.rollNo;
+      let sName = r.studentName;
+      let sMobile = r.mobileNo;
+
+      if (!admNo || !sName || !sRoll || !sMobile) {
+        const sDoc = await Student.findById(sId);
+        if (sDoc) {
+          admNo = admNo || sDoc.admissionNo;
+          sRoll = sRoll || sDoc.currentRollNo;
+          sName = sName || sDoc.studentName;
+          sMobile = sMobile || sDoc.mobileNo || '';
+        }
+      }
+
+      return {
+        student: sId,
+        admissionNo: admNo || 'N/A',
+        rollNo: sRoll || '1',
+        studentName: sName || 'Student',
+        mobileNo: sMobile || '',
+        status: r.status || 'PRESENT',
+        remarks: r.remarks || ''
+      };
+    }));
+
+    const presentCount = sanitizedRecords.filter((r) => r.status === 'PRESENT').length;
+    const absentCount = sanitizedRecords.filter((r) => r.status === 'ABSENT').length;
+    const lateCount = sanitizedRecords.filter((r) => r.status === 'LATE' || r.status === 'HALF_DAY').length;
 
     const attendance = await Attendance.findOneAndUpdate(
       {
@@ -96,11 +128,11 @@ exports.submitDailyAttendance = async (req, res, next) => {
         className: className.toUpperCase(),
         sectionName: sectionName.toUpperCase(),
         date: attendanceDate,
-        totalStudents: records.length,
+        totalStudents: sanitizedRecords.length,
         presentCount,
         absentCount,
         lateCount,
-        records,
+        records: sanitizedRecords,
         takenBy: req.user ? req.user._id : null,
         takenByName: req.user ? req.user.name : 'Teacher'
       },
@@ -197,6 +229,63 @@ exports.getStudentAttendance = async (req, res, next) => {
         lateCount,
         attendancePercentage,
         records: studentRecords
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get teacher's own class allocation (for auto-detect on attendance page)
+// @route   GET /api/attendance/my-class
+exports.getMyClassAllocation = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const session = req.query.session;
+
+    // Find the staff record linked to this user
+    const staffRecord = await Staff.findOne({ userId });
+    if (!staffRecord) {
+      return res.status(200).json({
+        success: true,
+        data: { found: false, allocations: [], message: 'No staff record linked to this account' }
+      });
+    }
+
+    // Look for all class allocations for this teacher
+    const query = { teacher: staffRecord._id, ...(session ? { academicSession: session } : {}) };
+    const allAllocations = await TeacherAllocation.find(query).sort({ className: 1, sectionName: 1 });
+
+    if (!allAllocations.length) {
+      return res.status(200).json({
+        success: true,
+        data: { found: false, allocations: [], message: 'No class allocation found for this teacher' }
+      });
+    }
+
+    // Prefer isClassTeacher = true for primary class
+    const classTeacherAlloc = allAllocations.find((a) => a.isClassTeacher);
+    const primary = classTeacherAlloc || allAllocations[0];
+
+    // Build unique class-section combos from all allocations
+    const uniqueCombos = [];
+    const seen = new Set();
+    allAllocations.forEach((a) => {
+      const key = `${a.className}-${a.sectionName}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueCombos.push({ className: a.className, sectionName: a.sectionName, isClassTeacher: !!a.isClassTeacher });
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        found: true,
+        isClassTeacher: !!classTeacherAlloc,
+        primaryClass: primary.className,
+        primarySection: primary.sectionName,
+        allocations: uniqueCombos
       }
     });
   } catch (error) {

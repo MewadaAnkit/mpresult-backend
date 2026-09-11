@@ -27,23 +27,23 @@ const minutesToTimeStr = (minutes) => {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
 
-// @desc    Get timetable for a class & section or entire week
+// @desc    Get timetable for a class & section, full week, or all classes
 // @route   GET /api/timetable
 exports.getTimetable = async (req, res, next) => {
   try {
     const { session, className, sectionName, dayOfWeek } = req.query;
-    if (!session || !className || !sectionName) {
-      return res.status(400).json({ success: false, message: 'Session, Class and Section are required' });
+    if (!session) {
+      return res.status(400).json({ success: false, message: 'Academic session is required' });
     }
 
     let query = {
-      academicSession: session,
-      className: className.toUpperCase(),
-      sectionName: sectionName.toUpperCase()
+      academicSession: session
     };
-    if (dayOfWeek) query.dayOfWeek = dayOfWeek.toUpperCase();
+    if (className && className !== 'ALL') query.className = className.toUpperCase();
+    if (sectionName && sectionName !== 'ALL') query.sectionName = sectionName.toUpperCase();
+    if (dayOfWeek && dayOfWeek !== 'ALL') query.dayOfWeek = dayOfWeek.toUpperCase();
 
-    const timetable = await Timetable.find(query).sort({ dayOfWeek: 1 });
+    const timetable = await Timetable.find(query).sort({ className: 1, sectionName: 1, dayOfWeek: 1 });
     res.status(200).json({ success: true, count: timetable.length, data: timetable });
   } catch (error) {
     next(error);
