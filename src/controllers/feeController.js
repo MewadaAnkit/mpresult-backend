@@ -168,11 +168,12 @@ exports.searchStudentForFee = async (req, res, next) => {
           });
 
           if (!structure) {
-            // No fee structure configured — return student with null ledger and a warning
+            // No fee structure configured — allow ad-hoc direct collection without blocking
             return {
               student: st,
               ledger: null,
-              warning: `No fee structure configured for Class ${st.currentClass} in session ${session || st.currentSession}. Please set up a fee structure first.`
+              isAdHoc: true,
+              warning: `कक्षा ${st.currentClass} के लिए पूर्व-निर्धारित शुल्क संरचना (Fee Structure) नहीं है। आप सीधे भुगतान जमा कर सकते हैं।`
             };
           }
 
@@ -214,6 +215,7 @@ exports.collectFeePayment = async (req, res, next) => {
       studentId,
       academicSession,
       amountPaid,
+      customTotalFee,
       paymentMode,
       transactionRef,
       discountAmount,
@@ -235,12 +237,12 @@ exports.collectFeePayment = async (req, res, next) => {
 
     // Get current ledger to validate overpayment
     const existingLedger = await StudentFeeLedger.findOne({ student: student._id, academicSession });
-    if (existingLedger) {
+    if (existingLedger && existingLedger.totalFee > 0) {
       const effectiveDiscount = Number(discountAmount) || existingLedger.discountAmount || 0;
       const effectiveNetFee = Math.max(0, existingLedger.totalFee - effectiveDiscount);
       const effectiveBalance = Math.max(0, effectiveNetFee - (existingLedger.paidAmount || 0));
       // Allow up to 5% tolerance for rounding/partial payments, but block significant overpayment
-      if (effectiveBalance > 0 && paidAmt > effectiveBalance * 1.05) {
+      if (effectiveBalance > 0 && paidAmt > effectiveBalance * 1.05 && !customTotalFee) {
         return res.status(400).json({
           success: false,
           message: `Overpayment not allowed. Maximum payable amount is ₹${effectiveBalance.toFixed(2)}`
@@ -295,6 +297,7 @@ exports.collectFeePayment = async (req, res, next) => {
     });
 
     if (!ledger) {
+      const initialTotal = customTotalFee && Number(customTotalFee) > 0 ? Number(customTotalFee) : Number(amountPaid);
       ledger = new StudentFeeLedger({
         student: student._id,
         admissionNo: student.admissionNo,
@@ -302,12 +305,15 @@ exports.collectFeePayment = async (req, res, next) => {
         academicSession,
         className: student.currentClass,
         sectionName: student.currentSection,
-        totalFee: Number(amountPaid),
+        totalFee: initialTotal,
         discountAmount: 0,
-        netFee: Number(amountPaid),
+        netFee: initialTotal,
         paidAmount: 0,
-        balanceAmount: Number(amountPaid)
+        balanceAmount: initialTotal
       });
+    } else if (customTotalFee && Number(customTotalFee) > 0) {
+      ledger.totalFee = Number(customTotalFee);
+      ledger.netFee = Math.max(0, Number(customTotalFee) - (ledger.discountAmount || 0));
     }
 
     if (discountAmount !== undefined && discountAmount !== null) {
