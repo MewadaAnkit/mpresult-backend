@@ -60,6 +60,17 @@ const attendanceSchema = new mongoose.Schema(
       trim: true,
       uppercase: true
     },
+    subjectCode: {
+      type: String,
+      default: 'DAILY',
+      trim: true,
+      uppercase: true
+    },
+    subjectName: {
+      type: String,
+      default: 'Daily Roll Call / दैनिक उपस्थिति',
+      trim: true
+    },
     date: {
       type: Date,
       required: true
@@ -99,6 +110,6 @@ const attendanceSchema = new mongoose.Schema(
   }
 );
 
-attendanceSchema.index({ academicSession: 1, className: 1, sectionName: 1, date: 1 }, { unique: true });
+attendanceSchema.index({ academicSession: 1, className: 1, sectionName: 1, subjectCode: 1, date: 1 }, { unique: true });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

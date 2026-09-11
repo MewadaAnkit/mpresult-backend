@@ -7,7 +7,7 @@ const Staff = require('../models/Staff');
 // @route   GET /api/attendance/daily
 exports.getDailyAttendance = async (req, res, next) => {
   try {
-    const { session, className, sectionName, date } = req.query;
+    const { session, className, sectionName, date, subjectCode } = req.query;
     if (!session || !className || !sectionName || !date) {
       return res.status(400).json({ success: false, message: 'Session, Class, Section and Date are required' });
     }
@@ -17,10 +17,13 @@ exports.getDailyAttendance = async (req, res, next) => {
     const nextDate = new Date(searchDate);
     nextDate.setDate(nextDate.getDate() + 1);
 
+    const targetSubjectCode = (subjectCode || 'DAILY').toUpperCase();
+
     const existing = await Attendance.findOne({
       academicSession: session,
       className: className.toUpperCase(),
       sectionName: sectionName.toUpperCase(),
+      subjectCode: targetSubjectCode,
       date: { $gte: searchDate, $lt: nextDate }
     });
 
@@ -57,6 +60,8 @@ exports.getDailyAttendance = async (req, res, next) => {
         academicSession: session,
         className,
         sectionName,
+        subjectCode: targetSubjectCode,
+        subjectName: targetSubjectCode === 'DAILY' ? 'Daily Roll Call / दैनिक उपस्थिति' : targetSubjectCode,
         date: searchDate,
         totalStudents: defaultRecords.length,
         presentCount: defaultRecords.length,
@@ -70,11 +75,11 @@ exports.getDailyAttendance = async (req, res, next) => {
   }
 };
 
-// @desc    Save/Submit daily attendance
+// @desc    Save/Submit daily or subject-wise attendance
 // @route   POST /api/attendance/daily
 exports.submitDailyAttendance = async (req, res, next) => {
   try {
-    const { academicSession, className, sectionName, date, records } = req.body;
+    const { academicSession, className, sectionName, date, records, subjectCode, subjectName } = req.body;
 
     if (!records || !records.length) {
       return res.status(400).json({ success: false, message: 'Attendance records are required' });
@@ -82,6 +87,50 @@ exports.submitDailyAttendance = async (req, res, next) => {
 
     const attendanceDate = new Date(date);
     attendanceDate.setHours(0, 0, 0, 0);
+
+    const targetSubjectCode = (subjectCode || 'DAILY').toUpperCase();
+    const targetSubjectName = subjectName || (targetSubjectCode === 'DAILY' ? 'Daily Roll Call / दैनिक उपस्थिति' : targetSubjectCode);
+
+    // Strict Teacher Authorization: If logged in as TEACHER, verify allocation
+    if (req.user && req.user.role === 'TEACHER') {
+      const staffRecord = await Staff.findOne({
+        $or: [{ userId: req.user._id }, { email: req.user.email }]
+      });
+
+      if (!staffRecord) {
+        return res.status(403).json({
+          success: false,
+          message: 'कोई शिक्षक प्रोफ़ाइल नहीं मिली (Teacher staff record not found).'
+        });
+      }
+
+      // Check allocations for this teacher in this session, class, and section
+      const allocations = await TeacherAllocation.find({
+        teacher: staffRecord._id,
+        academicSession: academicSession || '2025-26',
+        className: className.toUpperCase(),
+        sectionName: sectionName.toUpperCase()
+      });
+
+      if (!allocations || allocations.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: `आप कक्षा ${className}-${sectionName} की उपस्थिति दर्ज करने के लिए अधिकृत नहीं हैं (You are not allocated to this class).`
+        });
+      }
+
+      if (targetSubjectCode !== 'DAILY') {
+        const isSubjectAllocated = allocations.some(
+          (a) => a.subjectCode.toUpperCase() === targetSubjectCode
+        );
+        if (!isSubjectAllocated) {
+          return res.status(403).json({
+            success: false,
+            message: `आप केवल अपने आवंटित विषय (${targetSubjectName}) की ही उपस्थिति दर्ज कर सकते हैं (You can only mark attendance for your assigned subject).`
+          });
+        }
+      }
+    }
 
     // Sanitize records to ensure student, admissionNo, rollNo, studentName and mobileNo are present
     const sanitizedRecords = await Promise.all(records.map(async (r) => {
@@ -121,12 +170,15 @@ exports.submitDailyAttendance = async (req, res, next) => {
         academicSession,
         className: className.toUpperCase(),
         sectionName: sectionName.toUpperCase(),
+        subjectCode: targetSubjectCode,
         date: attendanceDate
       },
       {
         academicSession,
         className: className.toUpperCase(),
         sectionName: sectionName.toUpperCase(),
+        subjectCode: targetSubjectCode,
+        subjectName: targetSubjectName,
         date: attendanceDate,
         totalStudents: sanitizedRecords.length,
         presentCount,
@@ -141,7 +193,7 @@ exports.submitDailyAttendance = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: `Attendance marked for ${className}-${sectionName} (${presentCount}/${records.length} Present)`,
+      message: `Attendance marked for ${className}-${sectionName} [${targetSubjectName}] (${presentCount}/${records.length} Present)`,
       data: attendance
     });
   } catch (error) {
@@ -236,15 +288,22 @@ exports.getStudentAttendance = async (req, res, next) => {
   }
 };
 
-// @desc    Get teacher's own class allocation (for auto-detect on attendance page)
+// @desc    Get teacher's own class & subject allocations (for smart auto-fill and restriction)
 // @route   GET /api/attendance/my-class
 exports.getMyClassAllocation = async (req, res, next) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user ? req.user._id : null;
+    const email = req.user ? req.user.email : null;
     const session = req.query.session;
 
-    // Find the staff record linked to this user
-    const staffRecord = await Staff.findOne({ userId });
+    // Find the staff record linked to this user by userId or email
+    const staffRecord = await Staff.findOne({
+      $or: [
+        ...(userId ? [{ userId }] : []),
+        ...(email ? [{ email }] : [])
+      ]
+    });
+
     if (!staffRecord) {
       return res.status(200).json({
         success: true,
@@ -252,7 +311,7 @@ exports.getMyClassAllocation = async (req, res, next) => {
       });
     }
 
-    // Look for all class allocations for this teacher
+    // Look for all class and subject allocations for this teacher
     const query = { teacher: staffRecord._id, ...(session ? { academicSession: session } : {}) };
     const allAllocations = await TeacherAllocation.find(query).sort({ className: 1, sectionName: 1 });
 
@@ -267,16 +326,13 @@ exports.getMyClassAllocation = async (req, res, next) => {
     const classTeacherAlloc = allAllocations.find((a) => a.isClassTeacher);
     const primary = classTeacherAlloc || allAllocations[0];
 
-    // Build unique class-section combos from all allocations
-    const uniqueCombos = [];
-    const seen = new Set();
-    allAllocations.forEach((a) => {
-      const key = `${a.className}-${a.sectionName}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        uniqueCombos.push({ className: a.className, sectionName: a.sectionName, isClassTeacher: !!a.isClassTeacher });
-      }
-    });
+    const allocationsList = allAllocations.map((a) => ({
+      className: a.className,
+      sectionName: a.sectionName,
+      subjectCode: a.subjectCode,
+      subjectName: a.subjectName,
+      isClassTeacher: !!a.isClassTeacher
+    }));
 
     return res.status(200).json({
       success: true,
@@ -285,7 +341,10 @@ exports.getMyClassAllocation = async (req, res, next) => {
         isClassTeacher: !!classTeacherAlloc,
         primaryClass: primary.className,
         primarySection: primary.sectionName,
-        allocations: uniqueCombos
+        primarySubjectCode: primary.subjectCode,
+        primarySubjectName: primary.subjectName,
+        teacherName: staffRecord.fullName,
+        allocations: allocationsList
       }
     });
   } catch (error) {

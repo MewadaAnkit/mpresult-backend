@@ -204,13 +204,26 @@ exports.createStudent = async (req, res, next) => {
     const targetSection = (currentSection || req.body.currentSection || 'A').toUpperCase();
     const targetSession = currentSession || req.body.currentSession || '2025-26';
 
-    const cleanRollNo = currentRollNo
-      ? String(currentRollNo).trim()
-      : String((await Student.countDocuments({
-          currentClass: targetClass,
-          currentSection: targetSection,
-          currentSession: targetSession
-        })) + 1);
+    let cleanRollNo;
+    const existingStudentsInClass = await Student.find({
+      currentClass: targetClass,
+      currentSection: targetSection,
+      currentSession: targetSession
+    }).select('currentRollNo');
+
+    const usedRolls = existingStudentsInClass
+      .map(s => parseInt(s.currentRollNo, 10))
+      .filter(n => !isNaN(n));
+    const maxRoll = usedRolls.length > 0 ? Math.max(...usedRolls) : 0;
+
+    if (currentRollNo && String(currentRollNo).trim()) {
+      cleanRollNo = String(currentRollNo).trim();
+      if (existingStudentsInClass.some(s => s.currentRollNo === cleanRollNo)) {
+        cleanRollNo = String(maxRoll + 1);
+      }
+    } else {
+      cleanRollNo = String(maxRoll + 1);
+    }
 
     const studentData = {
       ...req.body,
