@@ -33,10 +33,15 @@ const sankulRoutes = require('./routes/sankulRoutes');
 const app = express();
 
 // Security Middlewares
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(
   cors({
-    origin: [process.env.CLIENT_URL || 'http://localhost:5174', 'http://localhost:5173'],
+    origin: (origin, callback) => {
+      // Allow mobile apps, curl, native HTTP clients where origin is undefined
+      if (!origin) return callback(null, true);
+      // In development or local network, allow all origins
+      return callback(null, true);
+    },
     credentials: true
   })
 );
