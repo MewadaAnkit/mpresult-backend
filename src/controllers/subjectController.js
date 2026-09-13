@@ -5,7 +5,16 @@ exports.getSubjects = async (req, res, next) => {
   try {
     const { className, streamName } = req.query;
     const query = { isActive: true };
-    if (className) query.applicableClasses = className.toUpperCase();
+    if (className) {
+      const cleanCls = String(className).trim().toUpperCase().replace(/^CLASS\s*/i, '');
+      const numCls = parseInt(cleanCls, 10);
+      const possibleValues = [cleanCls, `CLASS ${cleanCls}`, 'ALL'];
+      if (!isNaN(numCls)) {
+        possibleValues.push(String(numCls));
+        possibleValues.push(String(numCls).padStart(2, '0'));
+      }
+      query.applicableClasses = { $in: possibleValues };
+    }
     if (streamName) query.streamName = streamName;
 
     const subjects = await Subject.find(query).sort({ displayOrder: 1, subjectName: 1 });

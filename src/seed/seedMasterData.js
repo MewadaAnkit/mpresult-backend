@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
+const dns = require('dns');
 const dotenv = require('dotenv');
 dotenv.config();
+
+// Fix for Windows / ISP DNS failure with MongoDB Atlas SRV records
+try {
+  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+} catch (e) {}
 
 const { seedMasterData } = require('./masterSeeder');
 
