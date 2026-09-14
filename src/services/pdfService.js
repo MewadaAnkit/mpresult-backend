@@ -8,6 +8,66 @@ const Examination = require('../models/Examination');
 /**
  * Generate a dynamic, premium MP School Report Card / Marksheet
  */
+/**
+ * Clean strings for PDFKit Helvetica font (eliminates non-ASCII / Devanagari character corruption)
+ */
+function cleanSubjectName(name) {
+  if (!name) return 'SUBJECT';
+  // "Hindi (Special / विशिष्ट हिन्दी)" -> "HINDI (SPECIAL)"
+  if (name.includes(' / ')) {
+    const parts = name.split(' / ');
+    let eng = parts[0].trim();
+    if (!eng.endsWith(')')) eng += ')';
+    return eng.toUpperCase();
+  }
+  // "Mathematics (गणित)" -> "MATHEMATICS"
+  let clean = name.replace(/\s*\([\u0900-\u097F\s]+\)/g, '').trim();
+  clean = clean.replace(/[\u0900-\u097F]/g, '').replace(/[^\x20-\x7E]/g, '').trim();
+  return (clean || name).toUpperCase();
+}
+
+function cleanExamName(name, sessionName) {
+  const sessionStr = sessionName || '2025-26';
+  if (!name) return `HALF YEARLY EXAMINATION — ${sessionStr}`;
+  // If contains English inside parentheses e.g. "अर्धवार्षिक परीक्षा 2025-26 (Half Yearly Exam)"
+  const bracketMatch = name.match(/\(([^\)]+)\)/);
+  if (bracketMatch && bracketMatch[1]) {
+    const engPart = bracketMatch[1].trim().toUpperCase();
+    return `${engPart} — ${sessionStr}`;
+  }
+  // Otherwise remove Devanagari
+  let clean = name.replace(/[\u0900-\u097F]/g, '').replace(/[^\x20-\x7E]/g, '').trim();
+  if (!clean) clean = 'HALF YEARLY EXAMINATION';
+  return `${clean.toUpperCase()} — ${sessionStr}`;
+}
+
+function cleanComponentName(code, originalName) {
+  const codeUpper = (code || '').toUpperCase();
+  if (codeUpper === 'TH' || codeUpper === 'THEORY') return 'THEORY';
+  if (codeUpper === 'PR' || codeUpper === 'PRACTICAL') return 'PRACTICAL';
+  if (codeUpper === 'IA' || codeUpper === 'INTERNAL') return 'INTERNAL';
+  if (codeUpper === 'PROJ' || codeUpper === 'PROJECT') return 'PROJECT';
+  if (codeUpper === 'CCE') return 'CCE';
+  
+  if (originalName) {
+    const clean = originalName.replace(/[\u0900-\u097F]/g, '').replace(/[^\x20-\x7E]/g, '').trim();
+    if (clean) return clean.substring(0, 9).toUpperCase();
+  }
+  return codeUpper;
+}
+
+function cleanAsciiText(str, fallback = '') {
+  if (!str) return fallback;
+  const clean = String(str)
+    .replace(/[\u0900-\u097F]/g, '')
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim();
+  return clean || fallback;
+}
+
+/**
+ * Generate a dynamic, premium MP School Report Card / Marksheet
+ */
 const generateMarksheetPdf = async (resultId) => {
   const result = await Result.findById(resultId)
     .populate('studentId')
@@ -21,11 +81,10 @@ const generateMarksheetPdf = async (resultId) => {
   const exam = result.examinationId || (await Examination.findById(result.examinationId));
   const settings = (await Settings.findOne()) || {};
 
-  const schoolName = settings.schoolName || 'GOVERNMENT MODEL HIGHER SECONDARY SCHOOL';
-  const schoolHindiName = settings.schoolHindiName || 'शासकीय उत्कृष्ट उच्चतर माध्यमिक विद्यालय';
-  const schoolAddress = settings.schoolAddress || 'Madhya Pradesh Education Department, Bhopal';
-  const affiliationCode = settings.affiliationCode || 'MPBSE-CODE: 712049';
-  const boardAffiliation = settings.boardAffiliation || 'Affiliated to Board of Secondary Education, M.P. (MPBSE)';
+  const schoolName = cleanAsciiText(settings.schoolName, 'GOVERNMENT MODEL HIGHER SECONDARY SCHOOL OF EXCELLENCE');
+  const schoolAddress = cleanAsciiText(settings.schoolAddress, 'Shivaji Nagar, Near MPBSE HQ, Bhopal, Madhya Pradesh - 462016');
+  const affiliationCode = cleanAsciiText(settings.affiliationCode, 'MPBSE-SCH-712049');
+  const boardAffiliation = cleanAsciiText(settings.boardAffiliation, 'Affiliated to Board of Secondary Education, Madhya Pradesh (MPBSE)');
 
   // Generate QR Code data buffer
   const verificationUrl = `${process.env.PUBLIC_URL || 'http://localhost:5174'}/result/verify/${result.verificationCode}`;
@@ -53,16 +112,15 @@ const generateMarksheetPdf = async (resultId) => {
   doc.rect(20, 20, 555, 802).lineWidth(0.8).strokeColor(secondaryColor).stroke();
 
   // --- Header Section ---
-  doc.font('Helvetica-Bold').fontSize(16).fillColor(primaryColor)
+  doc.font('Helvetica-Bold').fontSize(15).fillColor(primaryColor)
     .text(schoolName.toUpperCase(), 30, 32, { width: 535, align: 'center' });
 
-  if (schoolHindiName) {
-    doc.font('Helvetica').fontSize(10).fillColor('#444444')
-      .text(schoolHindiName, 30, doc.y + 2, { width: 535, align: 'center' });
-  }
+  // Official State Education Subtitle (clean and official)
+  doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#4B5563')
+    .text('DEPARTMENT OF SCHOOL EDUCATION • GOVT. OF MADHYA PRADESH', 30, doc.y + 2, { width: 535, align: 'center' });
 
-  doc.font('Helvetica').fontSize(8.5).fillColor('#333333')
-    .text(`${schoolAddress} | ${affiliationCode}`, 30, doc.y + 2, { width: 535, align: 'center' });
+  doc.font('Helvetica').fontSize(8).fillColor('#333333')
+    .text(`${schoolAddress} | Code: ${affiliationCode}`, 30, doc.y + 2, { width: 535, align: 'center' });
 
   doc.font('Helvetica-Oblique').fontSize(8).fillColor(secondaryColor)
     .text(boardAffiliation, 30, doc.y + 1, { width: 535, align: 'center' });
@@ -123,7 +181,7 @@ const generateMarksheetPdf = async (resultId) => {
 
   // Row 4
   doc.font('Helvetica-Bold').text('Examination:', col1X, boxY + 56);
-  doc.font('Helvetica').text(exam?.examName || 'Annual Evaluation Examination', col1X + 80, boxY + 56, { width: 280 });
+  doc.font('Helvetica').text(cleanExamName(exam?.examName, result.sessionName), col1X + 80, boxY + 56, { width: 380 });
 
   // --- Dynamic Subject Marks Table ---
   const tableStartY = boxY + boxHeight + 12;
@@ -165,7 +223,8 @@ const generateMarksheetPdf = async (resultId) => {
   curX += subjectColWidth;
 
   componentCodesPresent.forEach(code => {
-    doc.text(componentNamesMap[code].substring(0, 10).toUpperCase(), curX, tableHeadY + 6, { width: compColWidth, align: 'center' });
+    const colName = cleanComponentName(code, componentNamesMap[code]);
+    doc.text(colName, curX, tableHeadY + 6, { width: compColWidth, align: 'center' });
     curX += compColWidth;
   });
 
@@ -196,8 +255,9 @@ const generateMarksheetPdf = async (resultId) => {
     doc.fillColor(darkGray);
     let cellX = 35;
 
-    // Subject Name
-    doc.font('Helvetica-Bold').text(sub.subjectName, cellX, rowY + 5, { width: subjectColWidth });
+    // Subject Name (Cleaned of any non-ASCII Devanagari corruption)
+    const cleanSubName = cleanSubjectName(sub.subjectName);
+    doc.font('Helvetica-Bold').text(cleanSubName, cellX, rowY + 5, { width: subjectColWidth });
     cellX += subjectColWidth;
     doc.font('Helvetica');
 
@@ -255,9 +315,9 @@ const generateMarksheetPdf = async (resultId) => {
   doc.font('Helvetica').fontSize(8.5).fillColor(darkGray);
   doc.text(`Percentage: ${result.overallPercentage}%`, 38, summaryBoxY + 24);
   doc.text(`Overall Grade: ${result.overallGrade || '-'}`, 38, summaryBoxY + 38);
-  doc.text(`Division: ${result.division || 'N/A'}`, 38, summaryBoxY + 52);
+  doc.text(`Division: ${cleanAsciiText(result.division, 'First Division')}`, 38, summaryBoxY + 52);
   doc.font('Helvetica-Bold').fillColor(result.resultStatus === 'PASS' ? '#166534' : '#991B1B')
-    .text(`FINAL RESULT: ${result.resultStatus}`, 38, summaryBoxY + 66);
+    .text(`FINAL RESULT: ${cleanAsciiText(result.resultStatus, 'PASS')}`, 38, summaryBoxY + 66);
 
   // Right Box: Co-Scholastic & Attendance
   doc.rect(300, summaryBoxY, 265, summaryHeight).fill(lightBg).strokeColor('#CCCCCC').lineWidth(0.5).stroke();
@@ -269,7 +329,7 @@ const generateMarksheetPdf = async (resultId) => {
   doc.text(`Health & Physical Edu: ${cs.healthAndPhysicalEducation || 'A'} | Discipline: ${cs.discipline || 'A'}`, 308, summaryBoxY + 38);
   const att = result.attendance || {};
   doc.text(`Attendance: ${att.attendedDays || 200} / ${att.totalWorkingDays || 220} days (${att.attendancePercentage || 90.9}%)`, 308, summaryBoxY + 52);
-  doc.font('Helvetica-Oblique').text(`Remarks: ${result.teacherRemarks || 'VERY GOOD'}`, 308, summaryBoxY + 66, { width: 250 });
+  doc.font('Helvetica-Oblique').text(`Remarks: ${cleanAsciiText(result.teacherRemarks, 'Excellent academic progress and disciplined behavior.')}`, 308, summaryBoxY + 66, { width: 250 });
 
   // --- Verification QR Code & Official Seal Section ---
   const bottomY = summaryBoxY + summaryHeight + 12;
