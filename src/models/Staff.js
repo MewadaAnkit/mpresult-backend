@@ -83,6 +83,12 @@ const staffSchema = new mongoose.Schema(
       trim: true,
       default: ''
     },
+    bankDetails: {
+      accountNo: { type: String, default: '', trim: true },
+      ifscCode: { type: String, default: '', trim: true, uppercase: true },
+      bankName: { type: String, default: '', trim: true },
+      branchName: { type: String, default: '', trim: true }
+    },
     isActive: {
       type: Boolean,
       default: true
