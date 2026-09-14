@@ -18,9 +18,16 @@ const FeeHead = require('../models/FeeHead');
 const Settings = require('../models/Settings');
 const Student = require('../models/Student');
 const StudentEnrollment = require('../models/StudentEnrollment');
+const Examination = require('../models/Examination');
+const Marks = require('../models/Marks');
+const Result = require('../models/Result');
+const FeeStructure = require('../models/FeeStructure');
+const StudentFeeLedger = require('../models/StudentFeeLedger');
+const FeePayment = require('../models/FeePayment');
 
 const { ROLES } = require('../constants/roles');
 const { CLASS_MODES, COMPONENT_TYPES, EXAMINATION_TYPES } = require('../constants/examinationTypes');
+const { RESULT_STATUSES, APPROVAL_STAGES } = require('../constants/resultStatuses');
 
 // ============================================================================
 // 1. DEFAULT DEMO USERS & STAFF (1 per staff role)
@@ -1424,6 +1431,442 @@ async function seedMasterData(options = {}) {
         { upsert: true, new: true, setDefaultsOnInsert: true }
       );
       log(`  ✓ Student: Roll ${s.currentRollNo} • ${s.studentName} (Class ${s.currentClass}-${s.currentSection})`);
+    }
+
+    // ------------------------------------------------------------------------
+    // Step 12: Seed Live Demo Examination, Marks & Processed Results (Instant WOW)
+    // ------------------------------------------------------------------------
+    log('\n[12/13] Provisioning Live Demo Examination, Marks & Processed Results for Class 9-A...');
+    const scheme9 = await ExaminationScheme.findOne({ schemeCode: 'MP_HIGH_09_ANNUAL' });
+    const examUser = userMap[ROLES.EXAM_INCHARGE] || adminUser;
+    const principalUser = userMap[ROLES.PRINCIPAL] || adminUser;
+
+    const demoExam = await Examination.findOneAndUpdate(
+      { examCode: 'HY_2025_26', sessionName: '2025-26' },
+      {
+        $set: {
+          examName: 'अर्धवार्षिक परीक्षा 2025-26 (Half Yearly Exam)',
+          examCode: 'HY_2025_26',
+          sessionName: '2025-26',
+          examType: EXAMINATION_TYPES.SUMMATIVE,
+          schemeId: scheme9?._id,
+          applicableClasses: ['9', '10'],
+          startDate: new Date('2025-10-15'),
+          endDate: new Date('2025-10-25'),
+          marksSubmissionDeadline: new Date('2025-10-30'),
+          isMarksEntryLocked: true,
+          isResultPublished: true,
+          publishedDate: new Date('2025-11-01')
+        }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    log(`  ✓ Examination Created: ${demoExam.examName} [${demoExam.examCode}]`);
+
+    // Fetch Class 9 subjects
+    const class9SubjectCodes = ['HIN_09', 'ENG_09', 'SAN_09', 'MATH_09', 'SCI_09', 'SST_09'];
+    const class9Subjects = await Subject.find({ subjectCode: { $in: class9SubjectCodes } });
+    const subMap = {};
+    for (const sub of class9Subjects) {
+      subMap[sub.subjectCode] = sub;
+    }
+
+    // Student specific score profiles (5 students)
+    const STUDENT_SCORES = [
+      {
+        rollNo: '1',
+        admissionNo: 'ADM-2025-0901',
+        studentName: 'Aarav Sharma',
+        scores: {
+          HIN_09: { th: 68, ia: 24 }, // 92
+          ENG_09: { th: 65, ia: 23 }, // 88
+          SAN_09: { th: 70, ia: 25 }, // 95
+          MATH_09: { th: 72, ia: 25 }, // 97
+          SCI_09: { th: 67, pr: 24 },  // 91
+          SST_09: { th: 66, ia: 23 }   // 89
+        },
+        grandTotal: 552,
+        percentage: 92.0,
+        grade: 'A+',
+        division: 'First Division with Distinction',
+        rank: 1
+      },
+      {
+        rollNo: '2',
+        admissionNo: 'ADM-2025-0902',
+        studentName: 'Priya Patel',
+        scores: {
+          HIN_09: { th: 62, ia: 22 }, // 84
+          ENG_09: { th: 64, ia: 23 }, // 87
+          SAN_09: { th: 60, ia: 21 }, // 81
+          MATH_09: { th: 65, ia: 24 }, // 89
+          SCI_09: { th: 63, pr: 22 },  // 85
+          SST_09: { th: 61, ia: 22 }   // 83
+        },
+        grandTotal: 509,
+        percentage: 84.8,
+        grade: 'A',
+        division: 'First Division',
+        rank: 2
+      },
+      {
+        rollNo: '3',
+        admissionNo: 'ADM-2025-0903',
+        studentName: 'Rohit Verma',
+        scores: {
+          HIN_09: { th: 52, ia: 20 }, // 72
+          ENG_09: { th: 48, ia: 19 }, // 67
+          SAN_09: { th: 55, ia: 20 }, // 75
+          MATH_09: { th: 58, ia: 21 }, // 79
+          SCI_09: { th: 50, pr: 20 },  // 70
+          SST_09: { th: 53, ia: 20 }   // 73
+        },
+        grandTotal: 436,
+        percentage: 72.7,
+        grade: 'B+',
+        division: 'First Division',
+        rank: 3
+      },
+      {
+        rollNo: '4',
+        admissionNo: 'ADM-2025-0904',
+        studentName: 'Ananya Singh',
+        scores: {
+          HIN_09: { th: 45, ia: 18 }, // 63
+          ENG_09: { th: 42, ia: 17 }, // 59
+          SAN_09: { th: 44, ia: 18 }, // 62
+          MATH_09: { th: 46, ia: 18 }, // 64
+          SCI_09: { th: 40, pr: 18 },  // 58
+          SST_09: { th: 43, ia: 18 }   // 61
+        },
+        grandTotal: 367,
+        percentage: 61.2,
+        grade: 'B',
+        division: 'First Division',
+        rank: 4
+      },
+      {
+        rollNo: '5',
+        admissionNo: 'ADM-2025-0905',
+        studentName: 'Vikas Gond',
+        scores: {
+          HIN_09: { th: 38, ia: 16 }, // 54
+          ENG_09: { th: 32, ia: 15 }, // 47
+          SAN_09: { th: 35, ia: 16 }, // 51
+          MATH_09: { th: 22, ia: 15, grace: 3 }, // 37 + 3 grace = 40 (Grace demo)
+          SCI_09: { th: 34, pr: 16 },  // 50
+          SST_09: { th: 36, ia: 16 }   // 52
+        },
+        grandTotal: 294,
+        percentage: 49.0,
+        grade: 'D',
+        division: 'Second Division (Pass with Grace)',
+        rank: 5,
+        graceTotal: 3
+      }
+    ];
+
+    for (const studentProfile of STUDENT_SCORES) {
+      const studentDoc = await Student.findOne({ admissionNo: studentProfile.admissionNo });
+      if (!studentDoc) continue;
+
+      const subjectResultsList = [];
+
+      for (const [sCode, marksObj] of Object.entries(studentProfile.scores)) {
+        const subDoc = subMap[sCode];
+        if (!subDoc) continue;
+
+        const isScience = sCode === 'SCI_09';
+        const secondCode = isScience ? 'PR' : 'IA';
+        const secondName = isScience ? 'Practical Examination' : 'Internal Assessment';
+        const secondMarks = marksObj.pr !== undefined ? marksObj.pr : marksObj.ia;
+        const grace = marksObj.grace || 0;
+        const obtainedTotal = marksObj.th + secondMarks + grace;
+        const pct = (obtainedTotal / 100) * 100;
+        let subGrade = 'B';
+        if (pct >= 85) subGrade = 'A+';
+        else if (pct >= 70) subGrade = 'A';
+        else if (pct >= 50) subGrade = 'B';
+        else if (pct >= 33) subGrade = 'C';
+        else subGrade = 'D';
+
+        const componentsArray = [
+          {
+            componentCode: 'TH',
+            componentName: 'Theory Examination',
+            maxMarks: 75,
+            obtainedMarks: marksObj.th,
+            attendanceStatus: 'PRESENT',
+            isGraceGiven: grace > 0,
+            graceMarks: grace
+          },
+          {
+            componentCode: secondCode,
+            componentName: secondName,
+            maxMarks: 25,
+            obtainedMarks: secondMarks,
+            attendanceStatus: 'PRESENT',
+            isGraceGiven: false,
+            graceMarks: 0
+          }
+        ];
+
+        // Seed individual Marks record
+        await Marks.findOneAndUpdate(
+          { studentId: studentDoc._id, examinationId: demoExam._id, subjectId: subDoc._id },
+          {
+            $set: {
+              studentId: studentDoc._id,
+              admissionNo: studentDoc.admissionNo,
+              examinationId: demoExam._id,
+              sessionName: '2025-26',
+              className: '9',
+              sectionName: 'A',
+              subjectId: subDoc._id,
+              subjectName: subDoc.subjectName,
+              subjectCode: subDoc.subjectCode,
+              components: componentsArray,
+              totalMaxMarks: 100,
+              totalObtainedMarks: obtainedTotal,
+              percentage: pct,
+              grade: subGrade,
+              isPassed: true,
+              status: 'PRESENT',
+              isLocked: true,
+              enteredBy: teacherStaff?.userId || adminUser?._id,
+              verifiedBy: examUser?._id
+            }
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        subjectResultsList.push({
+          subjectId: subDoc._id,
+          subjectName: subDoc.subjectName,
+          subjectCode: subDoc.subjectCode,
+          subjectType: 'COMPULSORY',
+          components: componentsArray,
+          totalMaxMarks: 100,
+          totalObtainedMarks: obtainedTotal,
+          percentage: pct,
+          grade: subGrade,
+          gradePoint: pct >= 85 ? 10 : pct >= 70 ? 8 : pct >= 50 ? 6 : 4,
+          isPassed: true,
+          status: 'PASS'
+        });
+      }
+
+      // Seed processed Result record
+      const verificationCode = `MPRMS-202526-09-${studentProfile.admissionNo.replace('ADM-2025-', '')}`;
+      await Result.findOneAndUpdate(
+        { studentId: studentDoc._id, examinationId: demoExam._id },
+        {
+          $set: {
+            studentId: studentDoc._id,
+            admissionNo: studentDoc.admissionNo,
+            rollNo: studentProfile.rollNo,
+            examinationId: demoExam._id,
+            sessionName: '2025-26',
+            className: '9',
+            sectionName: 'A',
+            streamName: '',
+            schemeId: scheme9?._id,
+            schemeVersion: 1,
+            gradeRuleId: ruleMap.grade['MP_8_POINT'],
+            passingRuleId: ruleMap.passing['MP_PASS_33'],
+            subjectResults: subjectResultsList,
+            grandTotalMax: 600,
+            grandTotalObtained: studentProfile.grandTotal,
+            overallPercentage: studentProfile.percentage,
+            overallGrade: studentProfile.grade,
+            division: studentProfile.division,
+            resultStatus: RESULT_STATUSES.PASS,
+            failedSubjectCount: 0,
+            failedSubjects: [],
+            graceMarksGiven: studentProfile.graceTotal || 0,
+            attendance: { totalWorkingDays: 120, attendedDays: 110, attendancePercentage: 91.6 },
+            coScholastic: {
+              workEducation: 'A',
+              artEducation: 'A',
+              healthAndPhysicalEducation: 'A',
+              discipline: 'A',
+              generalConduct: 'EXCELLENT'
+            },
+            teacherRemarks: 'Excellent academic progress and disciplined behavior.',
+            approvalStage: APPROVAL_STAGES.PUBLISHED,
+            verificationCode,
+            isPublished: true,
+            publishedAt: new Date('2025-11-01'),
+            submittedBy: teacherStaff?.userId || adminUser?._id,
+            verifiedBy: examUser?._id,
+            approvedBy: principalUser?._id
+          }
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      log(`  ✓ Result & Marksheet Ready: Roll ${studentProfile.rollNo} • ${studentProfile.studentName} (${studentProfile.percentage}% - Grade ${studentProfile.grade})`);
+    }
+
+    // ------------------------------------------------------------------------
+    // Step 13: Seed Class 9 Fee Structure, Ledgers & Demo Payment Receipts
+    // ------------------------------------------------------------------------
+    log('\n[13/13] Provisioning Class 9 Fee Structure, Student Ledgers & Paid Receipts...');
+    const tuiHead = await FeeHead.findOne({ code: 'TUI' });
+    const devHead = await FeeHead.findOne({ code: 'DEV' });
+    const examHead = await FeeHead.findOne({ code: 'EXAM' });
+    const actHead = await FeeHead.findOne({ code: 'ACT' });
+    const accountantUser = userMap[ROLES.ACCOUNTANT] || adminUser;
+
+    const class9FeeStructure = await FeeStructure.findOneAndUpdate(
+      { academicSession: '2025-26', className: '9' },
+      {
+        $set: {
+          academicSession: '2025-26',
+          className: '9',
+          title: 'Class 9 Standard Annual Fee 2025-26',
+          annualTotal: 18000,
+          installments: [
+            {
+              installmentName: 'Term 1 (April - Admission & Development)',
+              dueDate: new Date('2025-04-30'),
+              totalAmount: 6000,
+              items: [
+                { feeHead: tuiHead?._id || new mongoose.Types.ObjectId(), headName: 'Tuition Fee', amount: 4000 },
+                { feeHead: devHead?._id || new mongoose.Types.ObjectId(), headName: 'Development Fee', amount: 2000 }
+              ]
+            },
+            {
+              installmentName: 'Term 2 (September - Mid-Term & Exam)',
+              dueDate: new Date('2025-09-30'),
+              totalAmount: 6000,
+              items: [
+                { feeHead: tuiHead?._id || new mongoose.Types.ObjectId(), headName: 'Tuition Fee', amount: 4500 },
+                { feeHead: examHead?._id || new mongoose.Types.ObjectId(), headName: 'Examination Fee', amount: 1500 }
+              ]
+            },
+            {
+              installmentName: 'Term 3 (December - Annual & Activities)',
+              dueDate: new Date('2025-12-31'),
+              totalAmount: 6000,
+              items: [
+                { feeHead: tuiHead?._id || new mongoose.Types.ObjectId(), headName: 'Tuition Fee', amount: 4500 },
+                { feeHead: actHead?._id || new mongoose.Types.ObjectId(), headName: 'Sports & Cultural Activity', amount: 1500 }
+              ]
+            }
+          ]
+        }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    log(`  ✓ Class 9 Fee Structure Configured: ₹18,000 Annual`);
+
+    // Student Fee Ledgers & Payments
+    const FEE_LEDGER_DATA = [
+      {
+        admissionNo: 'ADM-2025-0901',
+        studentName: 'Aarav Sharma',
+        paidAmount: 12000,
+        balanceAmount: 6000,
+        status: 'PARTIAL',
+        receipts: [
+          { receiptNo: 'REC-2025-001', amount: 6000, mode: 'UPI', date: new Date('2025-04-15') },
+          { receiptNo: 'REC-2025-002', amount: 6000, mode: 'CASH', date: new Date('2025-09-10') }
+        ]
+      },
+      {
+        admissionNo: 'ADM-2025-0902',
+        studentName: 'Priya Patel',
+        paidAmount: 18000,
+        balanceAmount: 0,
+        status: 'PAID',
+        receipts: [
+          { receiptNo: 'REC-2025-003', amount: 18000, mode: 'BANK_TRANSFER', date: new Date('2025-04-10') }
+        ]
+      },
+      {
+        admissionNo: 'ADM-2025-0903',
+        studentName: 'Rohit Verma',
+        paidAmount: 6000,
+        balanceAmount: 12000,
+        status: 'PARTIAL',
+        receipts: [
+          { receiptNo: 'REC-2025-004', amount: 6000, mode: 'CASH', date: new Date('2025-04-20') }
+        ]
+      },
+      {
+        admissionNo: 'ADM-2025-0904',
+        studentName: 'Ananya Singh',
+        paidAmount: 0,
+        balanceAmount: 18000,
+        status: 'PENDING',
+        receipts: []
+      },
+      {
+        admissionNo: 'ADM-2025-0905',
+        studentName: 'Vikas Gond',
+        paidAmount: 6000,
+        balanceAmount: 12000,
+        status: 'PARTIAL',
+        receipts: [
+          { receiptNo: 'REC-2025-005', amount: 6000, mode: 'UPI', date: new Date('2025-04-25') }
+        ]
+      }
+    ];
+
+    for (const fItem of FEE_LEDGER_DATA) {
+      const studentDoc = await Student.findOne({ admissionNo: fItem.admissionNo });
+      if (!studentDoc) continue;
+
+      await StudentFeeLedger.findOneAndUpdate(
+        { student: studentDoc._id, academicSession: '2025-26' },
+        {
+          $set: {
+            student: studentDoc._id,
+            admissionNo: studentDoc.admissionNo,
+            studentName: studentDoc.studentName,
+            academicSession: '2025-26',
+            className: '9',
+            sectionName: 'A',
+            totalFee: 18000,
+            discountAmount: 0,
+            netFee: 18000,
+            paidAmount: fItem.paidAmount,
+            balanceAmount: fItem.balanceAmount,
+            status: fItem.status,
+            lastPaymentDate: fItem.receipts.length > 0 ? fItem.receipts[fItem.receipts.length - 1].date : null
+          }
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      for (const rec of fItem.receipts) {
+        await FeePayment.findOneAndUpdate(
+          { receiptNo: rec.receiptNo },
+          {
+            $set: {
+              receiptNo: rec.receiptNo,
+              student: studentDoc._id,
+              admissionNo: studentDoc.admissionNo,
+              studentName: studentDoc.studentName,
+              academicSession: '2025-26',
+              className: '9',
+              sectionName: 'A',
+              amountPaid: rec.amount,
+              paymentMode: rec.mode,
+              paymentDate: rec.date,
+              transactionRef: `TXN-${rec.receiptNo}`,
+              items: [
+                { headName: 'Tuition & Academic Fees', amount: rec.amount }
+              ],
+              remarks: 'Quarterly tuition installment payment received with thanks.',
+              collectedBy: accountantUser?._id,
+              collectedByName: accountantUser?.name || 'Rameshwar Patidar'
+            }
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+      }
+      log(`  ✓ Fee Ledger: ${fItem.studentName} (Paid: ₹${fItem.paidAmount}, Bal: ₹${fItem.balanceAmount} [${fItem.status}])`);
     }
 
     log('\n======================================================================');
