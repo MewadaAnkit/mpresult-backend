@@ -172,6 +172,14 @@ const resultSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    isBestOfFiveApplied: {
+      type: Boolean,
+      default: false
+    },
+    bestOfFiveDroppedSubject: {
+      type: String,
+      default: ''
+    },
     attendance: {
       totalWorkingDays: { type: Number, default: 220 },
       attendedDays: { type: Number, default: 200 },

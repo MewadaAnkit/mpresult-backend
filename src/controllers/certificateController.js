@@ -59,6 +59,22 @@ exports.issueCertificate = async (req, res, next) => {
       issuedByName: req.user ? req.user.name : 'Principal'
     });
 
+    // Automatically deactivate student and archive enrollment when Transfer Certificate is issued
+    if (certificateType === 'TRANSFER_CERTIFICATE') {
+      student.isActive = false;
+      student.status = 'TC_ISSUED';
+      student.tcNumber = certificateNo;
+      student.tcDate = new Date();
+      student.leavingReason = reasonForLeaving || 'Transfer Certificate Issued';
+      await student.save();
+
+      const StudentEnrollment = require('../models/StudentEnrollment');
+      await StudentEnrollment.updateMany(
+        { studentId: student._id, sessionName: academicSession || student.currentSession },
+        { status: 'TRANSFERRED', remarks: `TC Issued (${certificateNo}) on ${new Date().toLocaleDateString('en-GB')}` }
+      );
+    }
+
     res.status(201).json({
       success: true,
       message: `${certificateType} issued successfully (${certificateNo})`,

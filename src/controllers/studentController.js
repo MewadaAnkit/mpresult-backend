@@ -25,6 +25,8 @@ exports.getStudents = async (req, res, next) => {
         { studentName: { $regex: search, $options: 'i' } },
         { admissionNo: { $regex: search, $options: 'i' } },
         { samagraId: { $regex: search, $options: 'i' } },
+        { familySamagraId: { $regex: search, $options: 'i' } },
+        { aadharNo: { $regex: search, $options: 'i' } },
         { mpBseRollNo: { $regex: search, $options: 'i' } },
         { currentRollNo: { $regex: search, $options: 'i' } }
       ];

@@ -96,6 +96,16 @@ const settingsSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
+    upiId: {
+      type: String,
+      trim: true,
+      default: 'mpschool@sbi'
+    },
+    upiPayeeName: {
+      type: String,
+      trim: true,
+      default: 'MP Model School Fee Collection'
+    },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'

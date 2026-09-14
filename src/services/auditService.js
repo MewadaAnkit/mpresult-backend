@@ -17,13 +17,13 @@ const logAction = async ({
 }) => {
   try {
     const actorUser = user || (req && req.user);
-    const ipAddress = req ? (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '') : '';
-    const userAgent = req ? req.headers['user-agent'] || '' : '';
+    const ipAddress = req?.headers ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '') : (req?.ip || '');
+    const userAgent = req?.headers ? req.headers['user-agent'] || '' : '';
 
     await AuditLog.create({
       userId: actorUser ? actorUser._id : null,
-      userName: actorUser ? actorUser.name : 'SYSTEM',
-      userRole: actorUser ? actorUser.role : 'SYSTEM',
+      userName: actorUser?.name || 'SYSTEM',
+      userRole: actorUser?.role || 'ADMIN',
       action,
       module,
       resourceId: resourceId ? String(resourceId) : '',

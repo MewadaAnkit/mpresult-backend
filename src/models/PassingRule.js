@@ -74,6 +74,16 @@ const passingRuleSchema = new mongoose.Schema(
         default: 2
       }
     },
+    bestOfFiveRule: {
+      isEnabled: {
+        type: Boolean,
+        default: false
+      },
+      applicableClasses: {
+        type: [String],
+        default: ['9', '10']
+      }
+    },
     description: {
       type: String,
       trim: true,

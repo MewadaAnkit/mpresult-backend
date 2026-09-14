@@ -12,7 +12,32 @@ const studentSchema = new mongoose.Schema(
     samagraId: {
       type: String,
       trim: true,
-      default: '' // MP Samagra ID (9 digits)
+      default: '' // MP Member Samagra ID (9 digits)
+    },
+    familySamagraId: {
+      type: String,
+      trim: true,
+      default: '' // MP Family Samagra ID (8 digits)
+    },
+    aadharNo: {
+      type: String,
+      trim: true,
+      default: '' // UIDAI Aadhaar Number (12 digits)
+    },
+    bloodGroup: {
+      type: String,
+      enum: ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-', 'UNKNOWN'],
+      default: 'UNKNOWN'
+    },
+    studentPhoto: {
+      type: String,
+      default: '' // Base64 or URL
+    },
+    bankDetails: {
+      accountNo: { type: String, trim: true, default: '' },
+      ifscCode: { type: String, trim: true, uppercase: true, default: '' },
+      bankName: { type: String, trim: true, default: '' },
+      branchName: { type: String, trim: true, default: '' }
     },
     mpBseRollNo: {
       type: String,
@@ -109,6 +134,25 @@ const studentSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true
+    },
+    status: {
+      type: String,
+      enum: ['ACTIVE', 'TC_ISSUED', 'DETAINED', 'ALUMNI', 'SUSPENDED'],
+      default: 'ACTIVE'
+    },
+    tcNumber: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    tcDate: {
+      type: Date,
+      default: null
+    },
+    leavingReason: {
+      type: String,
+      trim: true,
+      default: ''
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
